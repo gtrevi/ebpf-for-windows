@@ -87,7 +87,7 @@
       <ModuleDefinitionFile>Source.def</ModuleDefinitionFile>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
       <AdditionalDependencies>$(SanitizerLibs);mincore.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>/INFERASANLIBS:NO ..\..\x64\Debug\no_asan_kernel.lib %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
@@ -109,7 +109,7 @@
       <ModuleDefinitionFile>Source.def</ModuleDefinitionFile>
       <AdditionalDependencies>$(SanitizerLibs);mincore.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
-      <AdditionalOptions>/INFERASANLIBS:NO ..\..\x64\Debug\no_asan_kernel.lib %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
@@ -147,6 +147,9 @@
     </ProjectReference>
     <ProjectReference Include="..\libs\elf_spec\elf_spec.vcxproj">
       <Project>{c3d2cd73-bf4c-47df-8808-2a9996124d5b}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\libs\no_asan\no_asan_kernel.vcxproj">
+      <Project>{593eded2-6eb6-41b9-b6c3-6748462a2313}</Project>
     </ProjectReference>
     <ProjectReference Include="..\libs\pe-parse\pe-parse.vcxproj">
       <Project>{fe4fea79-bfbb-4822-abcb-0d3beea240a7}</Project>
