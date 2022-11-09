@@ -102,7 +102,7 @@
     </Midl>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\ntoskrnl.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;$(DDK_LIB_PATH)\netio.lib</AdditionalDependencies>
-      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dynamic_runtime_thunk-x86_64.lib clang_rt.asan_dynamic-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO</AdditionalOptions>
     </Link>
     <DriverSign>
       <FileDigestAlgorithm>SHA256</FileDigestAlgorithm>
@@ -126,7 +126,7 @@
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\ntoskrnl.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;$(DDK_LIB_PATH)\netio.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
-      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dbg_dynamic_runtime_thunk-x86_64.lib clang_rt.asan_dbg_dynamic-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO</AdditionalOptions>
     </Link>
     <DriverSign>
       <FileDigestAlgorithm>SHA256</FileDigestAlgorithm>
