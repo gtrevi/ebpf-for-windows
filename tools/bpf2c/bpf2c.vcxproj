@@ -82,9 +82,11 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(VC_LibraryPath_VC_x64_Desktop)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(VC_LibraryPath_VC_x64_Desktop)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -121,6 +123,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>$(SanitizerLibs);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dynamic_runtime_thunk-x86_64.lib clang_rt.asan_dynamic-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <PreBuildEvent>
       <Command>powershell -NonInteractive -ExecutionPolicy Unrestricted $(SolutionDir)scripts\Process-File.ps1 -InputFile Convert-BpfToNative.ps1.template -OutputFile $(OutDir)Convert-BpfToNative.ps1 -ConfigFile replacements.json</Command>
