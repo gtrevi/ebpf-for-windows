@@ -89,7 +89,7 @@
       <ModuleDefinitionFile>Source.def</ModuleDefinitionFile>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
       <AdditionalDependencies>$(SanitizerLibs);mincore.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dbg_dynamic_runtime_thunk-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dbg_dynamic_runtime_thunk-x86_64.lib clang_rt.asan_dbg_dynamic-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
@@ -111,7 +111,7 @@
       <ModuleDefinitionFile>Source.def</ModuleDefinitionFile>
       <AdditionalDependencies>$(SanitizerLibs);mincore.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
-      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dbg_dynamic_runtime_thunk-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dynamic_runtime_thunk-x86_64.lib clang_rt.asan_dynamic-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)include</AdditionalIncludeDirectories>
