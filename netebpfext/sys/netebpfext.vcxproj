@@ -78,10 +78,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <ReferencePath>$(VC_ReferencesPath_x64);</ReferencePath>
+    <LibraryPath>$(DDK_LibraryPath_DDKPlatform);$(LibraryPath);$(VC_LibraryPath_VC_x64_Desktop)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <ReferencePath>$(VC_ReferencesPath_x64);</ReferencePath>
+    <LibraryPath>$(DDK_LibraryPath_DDKPlatform);$(LibraryPath);$(VC_LibraryPath_VC_x64_Desktop)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ResourceCompile>
@@ -100,7 +102,7 @@
     </Midl>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\ntoskrnl.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;$(DDK_LIB_PATH)\netio.lib</AdditionalDependencies>
-      <AdditionalOptions>/INFERASANLIBS:NO %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dynamic_runtime_thunk-x86_64.lib clang_rt.asan_dynamic-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <DriverSign>
       <FileDigestAlgorithm>SHA256</FileDigestAlgorithm>
@@ -124,7 +126,7 @@
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\ntoskrnl.lib;$(DDK_LIB_PATH)\ndis.lib;$(DDK_LIB_PATH)\wdmsec.lib;$(DDK_LIB_PATH)\fwpkclnt.lib;$(SDK_LIB_PATH)\uuid.lib;$(DDK_LIB_PATH)\netio.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
-      <AdditionalOptions>/INFERASANLIBS:NO %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/INFERASANLIBS:NO clang_rt.asan_dbg_dynamic_runtime_thunk-x86_64.lib clang_rt.asan_dbg_dynamic-x86_64.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <DriverSign>
       <FileDigestAlgorithm>SHA256</FileDigestAlgorithm>
