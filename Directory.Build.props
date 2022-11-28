@@ -11,17 +11,15 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(AddressSanitizer)'=='True'">
     <EnableASAN>true</EnableASAN>
-    <LibraryPath>"$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(VC_LibraryPath_VC_x64_Desktop)"</LibraryPath>
+    <LibraryPath>"$(VC_LibraryPath_VC_x64_Desktop);%(AdditionalLibraryDirectories)"</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Fuzzer)'=='Release|True'">
     <EnableASAN>true</EnableASAN>
-    <LibraryPath>"$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(VC_LibraryPath_VC_x64_Desktop)"</LibraryPath>
     <AdditionalOptions>/fsanitize-coverage=inline-bool-flag /fsanitize-coverage=edge /fsanitize-coverage=trace-cmp /fsanitize-coverage=trace-div %(AdditionalOptions)</AdditionalOptions>
     <SanitizerLibs>libsancov.lib;clang_rt.fuzzer_MD-x86_64.lib</SanitizerLibs>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Fuzzer)'=='Debug|True'">
     <EnableASAN>true</EnableASAN>
-    <LibraryPath>"$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(VC_LibraryPath_VC_x64_Desktop)"</LibraryPath>
     <AdditionalOptions>/fsanitize-coverage=inline-bool-flag /fsanitize-coverage=edge /fsanitize-coverage=trace-cmp /fsanitize-coverage=trace-div %(AdditionalOptions)</AdditionalOptions>
     <SanitizerLibs>libsancov.lib;clang_rt.fuzzer_MDd-x86_64.lib</SanitizerLibs>
   </PropertyGroup>
