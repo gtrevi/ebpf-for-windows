@@ -101,7 +101,7 @@ jobs:
         CXXFLAGS: /ZH:SHA_256 /fsanitize=address ${{env.CXX_FLAGS}}
         LDFLAGS: ${{env.LD_FLAGS}}
       run: |
-        cmake -DCMAKE_VS_SDK_LIBRARY_DIRECTORIES="`$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);`$(VC_LibraryPath_VC_x64_Desktop)" -G "Visual Studio 17 2022" -S external\ebpf-verifier -B external\ebpf-verifier\build
+        cmake -DCMAKE_VS_SDK_LIBRARY_DIRECTORIES="`$(VC_LibraryPath_x64);`$(WindowsSDK_LibraryPath_x64);`$(VC_LibraryPath_VC_x64_Desktop)" -G "Visual Studio 17 2022" -S external\ebpf-verifier -B external\ebpf-verifier\build
 
     - name: Create catch2 project
       working-directory: ${{env.GITHUB_WORKSPACE}}
