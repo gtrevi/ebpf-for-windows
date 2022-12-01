@@ -14,7 +14,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(AddressSanitizer)'=='True'">
     <Link>
-      <AdditionalLibraryDirectories>$(YourLibFolder);%(Link.AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(VC_LibraryPath_VC_x64_Desktop);%(Link.AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Fuzzer)'=='Release|True'">
