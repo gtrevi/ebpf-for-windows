@@ -65,7 +65,6 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
       <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>/INFERASANLIBS:NO $(TargetDir)\no_asan_kernel.lib %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -81,7 +80,6 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
       <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>/INFERASANLIBS:NO $(TargetDir)\no_asan_kernel.lib %(AdditionalOptions)</AdditionalOptions>
       <LinkTimeCodeGeneration />
     </Link>
   </ItemDefinitionGroup>
