@@ -271,7 +271,8 @@ jobs:
   sanitize_unit_tests:
     needs: sanitize
     # Only run on schedule and pull request.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    #if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: unit_tests
