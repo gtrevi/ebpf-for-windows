@@ -24,7 +24,7 @@ typedef _Return_type_success_(return >= 0) long NTSTATUS;
 #ifdef _DEBUG
 #define ebpf_assert(x) assert(x)
 #else
-#define ebpf_assert(x) _Pragma("warning(push)") _Pragma("warning(disable : 4189)") do(void)(x) _Pragma("warning(pop)")
+#define ebpf_assert(x) _Pragma("warning(push)") _Pragma("warning(disable : 4189)") (void)(x) _Pragma("warning(pop)")
 #endif //!_DEBUG
 
 #if !defined(UNREFERENCED_PARAMETER)
