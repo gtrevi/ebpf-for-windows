@@ -303,7 +303,7 @@ jobs:
       name: low_memory
       test_command: .\unit_tests.exe
       build_artifact: Build-x64
-      environment: windows-2019
+      environment: windows-2022
       code_coverage: true
       gather_dumps: true
       low_memory: true
