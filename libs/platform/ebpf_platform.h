@@ -46,7 +46,10 @@ extern "C"
         ebpf_assert(_result == EBPF_SUCCESS && #x); \
     } while (0)
 #else
-#define ebpf_assert_success(x) (x)
+// Avoid Warning 4189 on ebpf_assert() for CMake|Release
+#define ebpf_assert_success(x) \
+    if (x)                     \
+        ;
 #endif //!_DEBUG
 
     /**
