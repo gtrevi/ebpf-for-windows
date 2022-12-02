@@ -39,11 +39,15 @@ extern "C"
 
 #define EBPF_HASH_TABLE_NO_LIMIT 0
 
+#ifdef _DEBUG
 #define ebpf_assert_success(x)                      \
     do {                                            \
         ebpf_result_t _result = (x);                \
         ebpf_assert(_result == EBPF_SUCCESS && #x); \
     } while (0)
+#else
+#define ebpf_assert_success(x) (x)
+#endif //!_DEBUG
 
     /**
      * @brief A UTF-8 encoded string.
