@@ -39,11 +39,14 @@ extern "C"
 
 #define EBPF_HASH_TABLE_NO_LIMIT 0
 
-#define ebpf_assert_success(x)                      \
-    do {                                            \
-        ebpf_result_t _result = (x);                \
-        ebpf_assert(_result == EBPF_SUCCESS && #x); \
-    } while (0)
+#define ebpf_assert_success(x)                                     \
+    _Pragma("warning(push)") _Pragma("warning(disable : 4189)") do \
+    {                                                              \
+        ebpf_result_t _result = (x);                               \
+        ebpf_assert(_result == EBPF_SUCCESS && #x);                \
+    }                                                              \
+    while (0)                                                      \
+    _Pragma("warning(pop)")
 
     /**
      * @brief A UTF-8 encoded string.
@@ -450,6 +453,14 @@ extern "C"
         _Outptr_ ebpf_preemptible_work_item_t** work_item,
         _In_ void (*work_item_routine)(_In_opt_ const void* work_item_context),
         _In_opt_ void* work_item_context);
+
+    /**
+     * @brief Free a preemptible work item.
+     *
+     * @param[in] work_item Pointer to the work item to free.
+     */
+    void
+    ebpf_free_preemptible_work_item(_Frees_ptr_opt_ ebpf_preemptible_work_item_t* work_item);
 
     /**
      * @brief Schedule a preemptible work item to run.
