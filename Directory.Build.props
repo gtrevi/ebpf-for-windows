@@ -12,11 +12,6 @@
   <PropertyGroup Condition="'$(AddressSanitizer)'=='True'">
     <EnableASAN>true</EnableASAN>
   </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Analysis)'=='True'">
-    <ClCompile>
-      <!-- <AdditionalOptions>/Zm4000 %(AdditionalOptions)</AdditionalOptions> -->
-    </ClCompile>
-  </ItemDefinitionGroup>
   <ItemDefinitionGroup>
     <Link>
       <AdditionalLibraryDirectories>$(VC_LibraryPath_VC_x64_Desktop);%(Link.AdditionalLibraryDirectories)</AdditionalLibraryDirectories>

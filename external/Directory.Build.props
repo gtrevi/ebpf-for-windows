@@ -5,10 +5,10 @@
 -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" TreatAsLocalProperty="Platform">
   <!-- Override the rules for projects that are not under control of this project -->
-  <PropertyGroup Condition="'$(Analysis)'=='True'">
-    <!-- <DisableAnalyzeExternal>true</DisableAnalyzeExternal>
+  <PropertyGroup Condition="'$(Analysis)'=='True' AND $(AnalysisOnExternal)'=='True'">
+    <DisableAnalyzeExternal>true</DisableAnalyzeExternal>
     <RunCodeAnalysis>true</RunCodeAnalysis>
-    <CodeAnalysisRuleSet>$(SolutionDir)external\Analyze.external.ruleset</CodeAnalysisRuleSet> -->
+    <CodeAnalysisRuleSet>$(SolutionDir)external\Analyze.external.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(AddressSanitizer)'=='True' OR '$(Fuzzer)'=='True'">
     <EnableASAN>true</EnableASAN>
