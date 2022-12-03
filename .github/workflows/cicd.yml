@@ -160,7 +160,7 @@ jobs:
     uses: ./.github/workflows/reusable-build.yml
     with:
       build_artifact: Build-x64-Analyze
-      build_options: /p:Analysis='True'
+      build_options: /p:Analysis='True' /Zm
 
   # Build with C++ address sanitizer.
   sanitize:
