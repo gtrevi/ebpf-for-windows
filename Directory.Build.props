@@ -14,7 +14,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Analysis)'=='True'">
     <ClCompile>
-      <AdditionalOptions>/Zm2000 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Zm4000 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup>
