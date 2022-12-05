@@ -90,8 +90,7 @@ load_random_seed(const std::filesystem::path& file)
 {
     std::ifstream input(file);
     std::vector<std::mt19937::result_type> random_data(std::mt19937::state_size);
-    // for (const auto& value : random_data) {
-    for (size_t i = 0; i < ransom_data.size(); i++) {
+    for (size_t i = 0; i < random_data.size(); i++) {
         input >> std::hex >> random_data[i];
     }
     return random_data;
