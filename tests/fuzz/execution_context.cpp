@@ -135,7 +135,7 @@ TEST_CASE("execution_context_direct", "[fuzz]")
     HANDLE job = CreateJobObject(nullptr, nullptr);
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
-    limits.ProcessMemoryLimit = 50 * ONE_MB_IN_BYTE;
+    limits.ProcessMemoryLimit = 70 * ONE_MB_IN_BYTE;
     REQUIRE(job != INVALID_HANDLE_VALUE);
 
     REQUIRE(SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)));
