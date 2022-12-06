@@ -24,6 +24,8 @@
 
 #define ONE_MB_IN_BYTE (1024 * 1024)
 
+extern "C" size_t ebpf_fuzzing_memory_limit;
+
 std::vector<ebpf_handle_t>
 get_handles()
 {
@@ -131,15 +133,7 @@ TEST_CASE("execution_context_direct", "[fuzz]")
     ebpf_fuzzing_enabled = true;
     auto mt = seed_random_engine();
 
-    // Limit this processes memory to 50MB
-    HANDLE job = CreateJobObject(nullptr, nullptr);
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
-    limits.ProcessMemoryLimit = 200 * ONE_MB_IN_BYTE;
-    REQUIRE(job != INVALID_HANDLE_VALUE);
-
-    REQUIRE(SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)));
-    REQUIRE(AssignProcessToJobObject(job, GetCurrentProcess()));
+    ebpf_fuzzing_memory_limit = 50 * ONE_MB_IN_BYTE;
 
     ebpf_protocol_buffer_t request;
     ebpf_protocol_buffer_t reply;
