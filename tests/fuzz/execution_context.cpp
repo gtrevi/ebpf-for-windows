@@ -170,9 +170,10 @@ TEST_CASE("execution_context_direct", "[fuzz]")
         auto header = reinterpret_cast<ebpf_operation_header_t*>(request.data());
         header->id = operation_id;
         header->length = static_cast<uint16_t>(request.size());
-        REQUIRE(request.size() >= sizeof(ebpf_operation_header_t) + sizeof(handles[0]));
-        *reinterpret_cast<ebpf_handle_t*>(request.data() + sizeof(ebpf_operation_header_t)) =
-            handles[mt() % handles.size()];
+        if (request.size() >= sizeof(ebpf_operation_header_t) + sizeof(handles[0])) {
+            *reinterpret_cast<ebpf_handle_t*>(request.data() + sizeof(ebpf_operation_header_t)) =
+                handles[mt() % handles.size()];
+        }
         if (minimum_reply_size != 0) {
             reply.resize(minimum_reply_size + mt() % 1024);
             invoke_ioctl(request, reply);
