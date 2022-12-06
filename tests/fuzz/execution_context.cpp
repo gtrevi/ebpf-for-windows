@@ -25,6 +25,7 @@
 #define ONE_MB_IN_BYTE (1024 * 1024)
 
 extern "C" size_t ebpf_fuzzing_memory_limit;
+extern "C" bool ebpf_fuzzing_enabled;
 
 std::vector<ebpf_handle_t>
 get_handles()
@@ -73,8 +74,6 @@ get_handles()
     handles.push_back(Platform::_get_osfhandle(link_fd));
     return handles;
 }
-
-extern "C" bool ebpf_fuzzing_enabled;
 
 std::vector<std::mt19937::result_type>
 create_random_seed()
@@ -138,6 +137,7 @@ TEST_CASE("execution_context_direct", "[fuzz]")
     ebpf_protocol_buffer_t request;
     ebpf_protocol_buffer_t reply;
 
+    REQUIRE(handles.size() > 0);
     request.reserve(UINT16_MAX);
     reply.reserve(UINT16_MAX);
     for (size_t i = 0; i < iterations; i++) {
