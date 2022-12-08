@@ -201,7 +201,9 @@ void
 ebpf_native_acquire_reference(_Inout_ ebpf_native_module_t* module)
 {
     ebpf_assert(module->base.marker == _ebpf_native_marker);
-    ebpf_assert(ebpf_interlocked_increment_int32(&module->base.reference_count) != 1);
+
+    int32_t new_ref_count = ebpf_interlocked_increment_int32(&module->base.reference_count);
+    ebpf_assert(UNREFERENCED_PARAMETER(new_ref_count) != 1);
 }
 
 void
