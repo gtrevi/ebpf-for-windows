@@ -39,14 +39,13 @@ extern "C"
 
 #define EBPF_HASH_TABLE_NO_LIMIT 0
 
-#define ebpf_assert_success(x)                                     \
-    _Pragma("warning(push)") _Pragma("warning(disable : 4189)") do \
-    {                                                              \
-        ebpf_result_t _result = (x);                               \
-        ebpf_assert(_result == EBPF_SUCCESS && #x);                \
-    }                                                              \
-    while (0)                                                      \
-    _Pragma("warning(pop)")
+#define ebpf_assert_success(x)                      \
+    {                                               \
+        ebpf_result_t _result = (x);                \
+        UNREFERENCED_PARAMETER(_result);            \
+        ebpf_assert(_result == EBPF_SUCCESS && #x); \
+    }                                               \
+    while (0)
 
     /**
      * @brief A UTF-8 encoded string.
