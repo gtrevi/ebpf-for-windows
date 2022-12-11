@@ -114,10 +114,6 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=${{env.BUILD_PLATFORM}} ${{env.SOLUTION_FILE_PATH}} ${{env.BUILD_OPTIONS}}
 
-    - name: Copy VC Libs for Sanitizer
-      working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
-      run: copy "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.34.31933\bin\Hostx64\x64\clang*" .
-
     # Download and extract demo repo artifacts. These then get uploaded along with the build artifacts.
     # The subequent tests will directly get these when they download the build artifacts. In case
     # a test fails, the .o files used for the test will be available in the uploaded build artifacts.
