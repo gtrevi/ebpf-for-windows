@@ -55,13 +55,13 @@ jobs:
       LD_FLAGS: ${{inputs.ld_flags}}
 
     steps:
-    - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+    - uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b
       with:
         submodules: 'recursive'
 
     - name: Initialize CodeQL
       if: inputs.build_codeql == true
-      uses: github/codeql-action/init@b2a92eb56d8cb930006a1c6ed86b0782dd8a4297
+      uses: github/codeql-action/init@959cbb7472c4d4ad70cdfe6f4976053fe48ab394
       with:
         languages: 'cpp'
 
@@ -75,7 +75,7 @@ jobs:
         echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Cache nuget packages
-      uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7
+      uses: actions/cache@c1a5de879eb890d062a85ee0252d6036480b1fe2
       env:
         cache-name: cache-nuget-modules
       with:
@@ -92,8 +92,9 @@ jobs:
         CXXFLAGS: /ZH:SHA_256 ${{env.CXX_FLAGS}}
         LDFLAGS: ${{env.LD_FLAGS}}
       run: |
-        echo CXXFLAGS: $CXXFLAGS
-        echo LDFLAGS: $LDFLAGS
+        echo BUILD_CONFIGURATION: ${{env.BUILD_CONFIGURATION}}
+        echo CXXFLAGS: ${{env.CXXFLAGS}}
+        echo LDFLAGS: ${{env.LDFLAGS}}
         cmake -G "Visual Studio 17 2022" -S external\ebpf-verifier -B external\ebpf-verifier\build
 
     - name: Create catch2 project
@@ -102,8 +103,9 @@ jobs:
         CXXFLAGS: /ZH:SHA_256 ${{env.CXX_FLAGS}}
         LDFLAGS: ${{env.LD_FLAGS}}
       run: |
-        echo CXXFLAGS: $CXXFLAGS
-        echo LDFLAGS: $LDFLAGS
+        echo BUILD_CONFIGURATION: ${{env.BUILD_CONFIGURATION}}
+        echo CXXFLAGS: ${{env.CXXFLAGS}}
+        echo LDFLAGS: ${{env.LDFLAGS}}
         cmake -G "Visual Studio 17 2022" -S external\catch2 -B external\catch2\build -DBUILD_TESTING=OFF
 
     - name: Create ubpf project
@@ -112,8 +114,9 @@ jobs:
         CXXFLAGS: /ZH:SHA_256 ${{env.CXX_FLAGS}}
         LDFLAGS: ${{env.LD_FLAGS}}
       run: |
-        echo CXXFLAGS: $CXXFLAGS
-        echo LDFLAGS: $LDFLAGS
+        echo BUILD_CONFIGURATION: ${{env.BUILD_CONFIGURATION}}
+        echo CXXFLAGS: ${{env.CXXFLAGS}}
+        echo LDFLAGS: ${{env.LDFLAGS}}
         cmake -G "Visual Studio 17 2022" -S external\ubpf -B external\ubpf\build
 
     - name: Build
@@ -199,4 +202,4 @@ jobs:
 
     - name: Perform CodeQL Analysis
       if: inputs.build_codeql == true
-      uses: github/codeql-action/analyze@b2a92eb56d8cb930006a1c6ed86b0782dd8a4297
+      uses: github/codeql-action/analyze@959cbb7472c4d4ad70cdfe6f4976053fe48ab394
