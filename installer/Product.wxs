@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright (c) Microsoft Corporation
+SPDX-License-Identifier: MIT
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+	<Product Id="*" Name="eBPF for Windows" Language="1033" Version="1.0.0.0" Manufacturer="Microsoft" UpgradeCode="{0922C9FE-FE6E-4C18-8F32-762A7016E340}">
+		<Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+		<MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+		<MediaTemplate EmbedCab="yes" />
+
+		<Feature Id="ProductFeature" Title="ebpf_installer" Level="1">
+			<ComponentGroupRef Id="eBPFCore-Driver" />
+			<ComponentGroupRef Id="NetEbpfExt-Driver" />
+			<ComponentGroupRef Id="SampleEbpfExt-Driver" />
+			<ComponentGroupRef Id="eBPF-Service" />
+		</Feature>
+	</Product>
+
+	<!-- Define installation directory -->
+	<Fragment>
+		<Directory Id='TARGETDIR' Name='SourceDir'>
+			<Directory Id='SystemFolder'>
+				<Directory Id='INSTALLFOLDER' Name='drivers'>
+				</Directory>
+			</Directory>
+		</Directory>
+	</Fragment>
+
+	<!-- Define product components -->
+	<Fragment>
+		<ComponentGroup Id="eBPFCore-Driver" Directory="INSTALLFOLDER">
+			<Component Id='eBPFCoreComponent' Guid="{DF59AA75-EB2A-4FB3-9EB8-45DB33DD6A50}">
+				<File Source="$(var.EbpfCore.TargetPath)" KeyPath="yes"/>
+
+				<ServiceInstall Id="eBPFCoreInstaller"
+								Name="eBPFCore"
+								DisplayName="eBPF Core"
+								Description="eBPF Core"
+								Start="auto"
+								Type="ownProcess"
+								ErrorControl="normal"
+								Account="LocalSystem"
+								Vital="yes"
+								Interactive="no"/>
+
+				<ServiceControl Id="eBPFCore" Name="eBPFCore"
+								Start="install"
+								Stop="both"
+								Remove="uninstall"
+								Wait="yes"/>
+
+				<ServiceConfig ServiceName="eBPFCore"
+							   OnInstall="yes"
+							   DelayedAutoStart="yes"/>
+			</Component>
+		</ComponentGroup>
+	</Fragment>
+
+	<Fragment>
+		<ComponentGroup Id="NetEbpfExt-Driver" Directory="INSTALLFOLDER">
+			<Component Id='NetEbpfExtComponent' Guid="{7035FC5F-C7AC-4557-917A-9628E52BF1D4}">
+				<File Source="$(var.netebpfext.TargetPath)" KeyPath="yes"/>
+
+				<ServiceInstall Id="NetEbpfExtInstaller"
+								Name="NetEbpfExt"
+								DisplayName="NetEbpfExt"
+								Description="NetEbpfExt"
+								Start="auto"
+								Type="ownProcess"
+								ErrorControl="normal"
+								Account="LocalSystem"
+								Vital="yes"
+								Interactive="no"/>
+
+				<ServiceControl Id="NetEbpfExt" Name="NetEbpfExt"
+								Start="install"
+								Stop="both"
+								Remove="uninstall"
+								Wait="yes"/>
+
+				<ServiceConfig ServiceName="NetEbpfExt"
+							   OnInstall="yes"
+							   DelayedAutoStart="yes"/>
+			</Component>
+		</ComponentGroup>
+	</Fragment>
+
+	<Fragment>
+		<ComponentGroup Id="SampleEbpfExt-Driver" Directory="INSTALLFOLDER">
+			<Component Id='SampleEbpfExtComponent' Guid="{E303D6C3-6983-4313-ACA4-C681098C31E9}">
+				<File Source="$(var.sample_ebpf_ext.TargetPath)" KeyPath="yes"/>
+
+				<ServiceInstall Id="SampleEbpfExtInstaller"
+								Name="SampleEbpfExt"
+								DisplayName="SampleEbpfExt"
+								Description="SampleEbpfExt"
+								Start="auto"
+								Type="ownProcess"
+								ErrorControl="normal"
+								Account="LocalSystem"
+								Vital="yes"
+								Interactive="no"/>
+
+				<ServiceControl Id="SampleEbpfExt" Name="SampleEbpfExt"
+								Start="install"
+								Stop="both"
+								Remove="uninstall"
+								Wait="yes"/>
+
+				<ServiceConfig ServiceName="SampleEbpfExt"
+							   OnInstall="yes"
+							   DelayedAutoStart="yes"/>
+			</Component>
+		</ComponentGroup>
+	</Fragment>
+
+	<Fragment>
+		<ComponentGroup Id="eBPF-Service" Directory="INSTALLFOLDER">
+			<Component Id='eBPFServiceComponent' Guid='{5C4A7071-301B-49CB-BF41-B6CAE9A9F846}'>
+				<File Source="$(var.ebpfsvc.TargetPath)" KeyPath="yes"/>
+
+				<ServiceInstall Id="eBPFSvcInstaller"
+								Name="eBPFSvc"
+								DisplayName="eBPF Service"
+								Description="eBPF Service"
+								Start="auto"
+								Type="ownProcess"
+								ErrorControl="normal"
+								Account="LocalSystem"
+								Vital="yes"
+								Interactive="no"/>
+
+				<ServiceControl Id="eBPFSvc" Name="eBPFSvc"
+								Start="install"
+								Stop="both"
+								Remove="uninstall"
+								Wait="yes"/>
+
+				<ServiceConfig ServiceName="eBPFSvc"
+							   OnInstall="yes"
+							   DelayedAutoStart="yes"/>
+			</Component>
+		</ComponentGroup>
+	</Fragment>
+</Wix>
