@@ -58,7 +58,7 @@ SPDX-License-Identifier: MIT
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="ProgramFiles64Folder">
                 <Directory Id="INSTALL_ROOT" Name="eBPF for Windows">
-                    <Directory Id="dir_drivers" Name="drivers"></Directory>
+                    <Directory Id="dir_drivers" Name="drivers"/>
                     <Directory Id="dir_include" Name="include">
                         <Directory Id="dir_include_asm" Name="asm" />
                         <Directory Id="dir_include_bpf" Name="bpf" />
@@ -70,8 +70,8 @@ SPDX-License-Identifier: MIT
                         </Directory>
                         <Directory Id="dir_include_user" Name="user" />
                     </Directory>
-                    <Directory Id="dir_lib" Name="lib"></Directory>
-                    <Directory Id="dir_scripts" Name="scripts"></Directory>
+                    <Directory Id="dir_lib" Name="lib"/>
+                    <Directory Id="dir_scripts" Name="scripts"/>
                     <Directory Id="dir_testing" Name="testing"/>
                 </Directory>
             </Directory>
