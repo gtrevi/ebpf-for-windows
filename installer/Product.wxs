@@ -4,7 +4,7 @@ Copyright (c) Microsoft Corporation
 SPDX-License-Identifier: MIT
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:ui="http://schemas.microsoft.com/wix/UIExtension" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
-	<Product Id="{CED82A1E-59FA-40BB-9268-7739471F705C}" Name="eBPF for Windows" Language="1033" Version="0.5.0" Manufacturer="Microsoft" UpgradeCode="{22597454-CF57-45EA-85CF-4FE774FA1D9D}">
+	<Product Id="{E12C85CA-B7E9-4BA8-A94F-619BA0A38B54}" Name="eBPF for Windows" Language="1033" Version="0.6.0" Manufacturer="Microsoft" UpgradeCode="{B6BCACB1-C872-4159-ABCB-43A50668056C}">
 		<Package Description="eBPF for Windows" InstallerVersion="301" Compressed="yes" InstallScope="perMachine" Manufacturer="Microsoft" Platform="x64" />
 		<MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of [ProductName] is already installed." Schedule="afterInstallFinalize" />
 		<MediaTemplate EmbedCab="yes" />
@@ -20,7 +20,7 @@ SPDX-License-Identifier: MIT
 
 		<!-- Define the Product features and installation steps -->
 		<Feature Id="ProductFeature" Title="eBPF for Windows Installer" ConfigurableDirectory="INSTALL_ROOT" Display="expand" Level="1" Absent="disallow">
-			<Feature Id="eBPF_Runtime" Level="1" Title="Runtime components" Absent="disallow">
+			<Feature Id="eBPF_Core_Components" Level="1" Title="Core components" Absent="disallow">
 				<ComponentGroupRef Id="eBPF_Core_Components" />
 				<ComponentGroupRef Id="eBPF_Service" />
 				<ComponentGroupRef Id="eBPFCore_Driver" />
@@ -106,40 +106,40 @@ SPDX-License-Identifier: MIT
 	<!-- Define the product's <Runtime> components -->
 	<Fragment>
 		<ComponentGroup Id="eBPF_Core_Components" Directory="INSTALL_ROOT">
-			<Component Id="LICENSE" Guid="{5F1C02BF-8E1F-4621-B381-933A92C0E798}">
+			<Component Id="LICENSE" Guid="{AF22EAE5-7D8D-4F22-BB64-6B6A079A2947}">
 				<File Id="LICENSE.txt" Name="LICENSE.txt" DiskId="1" Source="$(var.SolutionDir)LICENSE.txt" />
 			</Component>
-			<Component Id="BPF2C.EXE" DiskId="1" Guid="BCB5F29D-004F-4461-AA42-E831A9DFBB6B">
+			<Component Id="BPF2C.EXE" DiskId="1" Guid="{BD23322B-91C3-4848-96E0-04E3745411E1}">
 				<File Id="BPF2C.EXE" Name="bpf2c.exe" Source="$(var.bpf2c.TargetDir)bpf2c.exe" />
 			</Component>
-			<Component Id="BPF2C.PDB" DiskId="1" Guid="B8758C19-39B2-4A6B-A330-1A14C0A24E02">
+			<Component Id="BPF2C.PDB" DiskId="1" Guid="{6DEC471C-F27D-431C-A0E0-6F46CA472BAC}">
 				<File Id="BPF2C.PDB" Name="bpf2c.pdb" Source="$(var.bpf2c.TargetDir)bpf2c.pdb" />
 			</Component>
-			<Component Id="EBPF_ALL.GUID" DiskId="1" Guid="79FBE648-B75E-4D46-BA06-2236B8FEFFFA">
+			<Component Id="EBPF_ALL.GUID" DiskId="1" Guid="{F3C808AC-A63B-4A29-B110-00B5A903F3C9}">
 				<File Id="EBPF_ALL.GUID" Name="ebpf-all.guid" Source="$(var.SolutionDir)\scripts\ebpf-all.guid" />
 			</Component>
-			<Component Id="EBPFAPI.DLL" DiskId="1" Guid="3FAEA5F0-3253-4D5B-9FED-27419D755D57">
+			<Component Id="EBPFAPI.DLL" DiskId="1" Guid="{C44E4B08-901E-4B71-8FD1-F0B3D11D063F}">
 				<File Id="EBPFAPI.DLL" Name="EbpfApi.dll" Source="$(var.EbpfApi.TargetDir)EbpfApi.dll" />
 			</Component>
-			<Component Id="EBPFAPI.PDB" DiskId="1" Guid="A5ADF5C3-4025-490C-969E-3FA1A2131289">
+			<Component Id="EBPFAPI.PDB" DiskId="1" Guid="{6912E957-E682-41CB-9C53-1D0B886528F7}">
 				<File Id="EBPFAPI.PDB" Name="EbpfApi.pdb" Source="$(var.EbpfApi.TargetDir)EbpfApi.pdb" />
 			</Component>
-			<Component Id="EBPF_PRINTK.GUID" DiskId="1" Guid="FC480172-06CE-4B04-806E-C9C273A90B04">
+			<Component Id="EBPF_PRINTK.GUID" DiskId="1" Guid="{77EB156D-046E-4BD6-8F57-CCA1DB031B0B}">
 				<File Id="EBPF_PRINTK.GUID" Name="ebpf-printk.guid" Source="$(var.SolutionDir)\scripts\ebpf-printk.guid" />
 			</Component>
-			<Component Id="EBPFFORWINDOWS.WPRP" DiskId="1" Guid="C43BCBB9-3332-4250-AD32-45110355D360">
+			<Component Id="EBPFFORWINDOWS.WPRP" DiskId="1" Guid="{4E4838D3-0C49-4FA2-B8EE-E484CC0E7FA9}">
 				<File Id="EBPFFORWINDOWS.WPRP" Name="ebpfforwindows.wprp" Source="$(var.SolutionDir)\scripts\ebpfforwindows.wprp" />
 			</Component>
-			<Component Id="EBPFNETSH.DLL" DiskId="1" Guid="B4AA97C3-64FD-4776-B187-483A83476CB0">
+			<Component Id="EBPFNETSH.DLL" DiskId="1" Guid="{95928460-8560-448F-83C3-E9040BECCF5D}">
 				<File Id="EBPFNETSH.DLL" Name="ebpfnetsh.dll" Source="$(var.ebpfnetsh.TargetDir)ebpfnetsh.dll" />
 			</Component>
-			<Component Id="EBPFNETSH.PDB" DiskId="1" Guid="A5BC8C89-62C3-4E13-A449-B24D33B265F1">
+			<Component Id="EBPFNETSH.PDB" DiskId="1" Guid="{D0FB50BF-8822-4197-B3CF-0476C357DBDD}">
 				<File Id="EBPFNETSH.PDB" Name="ebpfnetsh.pdb" Source="$(var.ebpfnetsh.TargetDir)ebpfnetsh.pdb" />
 			</Component>
-			<Component Id="EXPORT_PROGRAM_INFO.EXE" DiskId="1" Guid="61ECCD50-DF66-46F1-8C2C-81E5BCB6D4E9">
+			<Component Id="EXPORT_PROGRAM_INFO.EXE" DiskId="1" Guid="{7AF9A30B-D7BF-4FD2-88C0-C2947ED55DCD}">
 				<File Id="EXPORT_PROGRAM_INFO.EXE" Name="export_program_info.exe" Source="$(var.export_program_info.TargetDir)export_program_info.exe" />
 			</Component>
-			<Component Id="EXPORT_PROGRAM_INFO.PDB" DiskId="1" Guid="A2C96774-9971-4303-855E-972CE54CA70C">
+			<Component Id="EXPORT_PROGRAM_INFO.PDB" DiskId="1" Guid="{88356FE4-6247-4876-BA14-42EDA88CC5C7}">
 				<File Id="EXPORT_PROGRAM_INFO.PDB" Name="export_program_info.pdb" Source="$(var.export_program_info.TargetDir)export_program_info.pdb" />
 			</Component>
 		</ComponentGroup>
