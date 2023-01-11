@@ -11,6 +11,9 @@
 .*\.sln$
 .*\.vsdx$
 
+# Directories
+.*\corpus
+
 # Generated files
 tools/netsh/resource.h
 
