@@ -12,7 +12,7 @@
 .*\.vsdx$
 
 # Directories
-.*corpus
+.*corpus/*
 
 # Generated files
 tools/netsh/resource.h
