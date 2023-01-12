@@ -404,127 +404,127 @@ SPDX-License-Identifier: MIT
 	<Fragment>
 		<ComponentGroup Id="eBPF_Testing_Components" Directory="dir_testing">
 			<Component Id="API_TEST.EXE" DiskId="1" Guid="70AA4D35-45C4-466A-AE08-64A38E4C50F2">
-				<File Id="API_TEST.EXE" Name="api_test.exe" Source="..\x64\Debug\api_test.exe" />
+				<File Id="API_TEST.EXE" Name="api_test.exe" Source="$(var.api_test.TargetDir)api_test.exe" />
 			</Component>
 			<Component Id="API_TEST.PDB" DiskId="1" Guid="0884D5FB-CD5F-4780-892C-F9B37DF95989">
-				<File Id="API_TEST.PDB" Name="api_test.pdb" Source="..\x64\Debug\api_test.pdb" />
+				<File Id="API_TEST.PDB" Name="api_test.pdb" Source="$(var.api_test.TargetDir)api_test.pdb" />
 			</Component>
 			<Component Id="BINDMONITOR.O" DiskId="1" Guid="88D66354-E6DF-4BE4-B1D4-3F716A7F81AB">
-				<File Id="BINDMONITOR.O" Name="bindmonitor.o" Source="..\x64\Debug\bindmonitor.o" />
+				<File Id="BINDMONITOR.O" Name="bindmonitor.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\bindmonitor.o" />
 			</Component>
 			<Component Id="BINDMONITOR_RINGBUF.O" DiskId="1" Guid="BFF28F26-F7A5-44B0-9289-AD9F4A19E33E">
-				<File Id="BINDMONITOR_RINGBUF.O" Name="bindmonitor_ringbuf.o" Source="..\x64\Debug\bindmonitor_ringbuf.o" />
+				<File Id="BINDMONITOR_RINGBUF.O" Name="bindmonitor_ringbuf.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\bindmonitor_ringbuf.o" />
 			</Component>
 			<Component Id="BINDMONITOR_TAILCALL.O" DiskId="1" Guid="6A37AE43-179A-46BD-97D5-3D02B6807765">
-				<File Id="BINDMONITOR_TAILCALL.O" Name="bindmonitor_tailcall.o" Source="..\x64\Debug\bindmonitor_tailcall.o" />
+				<File Id="BINDMONITOR_TAILCALL.O" Name="bindmonitor_tailcall.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\bindmonitor_tailcall.o" />
 			</Component>
 			<Component Id="BPF.O" DiskId="1" Guid="EACD2AE9-0C63-4C0D-BC1D-FA698DB58A13">
-				<File Id="BPF.O" Name="bpf.o" Source="..\x64\Debug\bpf.o" />
+				<File Id="BPF.O" Name="bpf.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\bpf.o" />
 			</Component>
 			<Component Id="BPF_CALL.O" DiskId="1" Guid="438B5ECE-4410-477D-A60C-A5A68579791D">
-				<File Id="BPF_CALL.O" Name="bpf_call.o" Source="..\x64\Debug\bpf_call.o" />
+				<File Id="BPF_CALL.O" Name="bpf_call.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\bpf_call.o" />
 			</Component>
 			<Component Id="BPFTOOL.EXE" DiskId="1" Guid="E168EB1A-35F6-47E3-B977-B16DF7DFBDB0">
-				<File Id="BPFTOOL.EXE" Name="bpftool.exe" Source="..\x64\Debug\bpftool.exe" />
+				<File Id="BPFTOOL.EXE" Name="bpftool.exe" Source="$(var.bpftool.TargetDir)bpftool.exe" />
 			</Component>
 			<Component Id="BPFTOOL.PDB" DiskId="1" Guid="D2A6D747-A52C-43B9-A684-FF05A0DCE166">
-				<File Id="BPFTOOL.PDB" Name="bpftool.pdb" Source="..\x64\Debug\bpftool.pdb" />
+				<File Id="BPFTOOL.PDB" Name="bpftool.pdb" Source="$(var.bpftool.TargetDir)bpftool.pdb" />
 			</Component>
 			<Component Id="CGROUP_SOCK_ADDR.O" DiskId="1" Guid="6AF0B01D-554F-4918-8D00-AA4104DD5BE0">
-				<File Id="CGROUP_SOCK_ADDR.O" Name="cgroup_sock_addr.o" Source="..\x64\Debug\cgroup_sock_addr.o" />
+				<File Id="CGROUP_SOCK_ADDR.O" Name="cgroup_sock_addr.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\cgroup_sock_addr.o" />
 			</Component>
 			<Component Id="DECAP_PERMIT_PACKET.O" DiskId="1" Guid="EAD33B50-0E47-464B-A919-1A24B64C686A">
-				<File Id="DECAP_PERMIT_PACKET.O" Name="decap_permit_packet.o" Source="..\x64\Debug\decap_permit_packet.o" />
+				<File Id="DECAP_PERMIT_PACKET.O" Name="decap_permit_packet.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\decap_permit_packet.o" />
 			</Component>
 			<Component Id="DIVIDE_BY_ZERO.O" DiskId="1" Guid="DBCE744E-08BC-4241-816E-47D13E7F15DC">
-				<File Id="DIVIDE_BY_ZERO.O" Name="divide_by_zero.o" Source="..\x64\Debug\divide_by_zero.o" />
+				<File Id="DIVIDE_BY_ZERO.O" Name="divide_by_zero.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\divide_by_zero.o" />
 			</Component>
 			<Component Id="DROPPACKET.O" DiskId="1" Guid="32E91251-1D4F-48BA-978E-85F30E7903C5">
-				<File Id="DROPPACKET.O" Name="droppacket.o" Source="..\x64\Debug\droppacket.o" />
+				<File Id="DROPPACKET.O" Name="droppacket.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\droppacket.o" />
 			</Component>
 			<Component Id="DROPPACKET_UM.DLL" DiskId="1" Guid="F4D422DB-ED15-48E2-8F99-B5BBA4B38EE1">
-				<File Id="DROPPACKET_UM.DLL" Name="droppacket_um.dll" Source="..\x64\Debug\droppacket_um.dll" />
+				<File Id="DROPPACKET_UM.DLL" Name="droppacket_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\droppacket_um.dll" />
 			</Component>
 			<Component Id="DROPPACKET_UM.PDB" DiskId="1" Guid="5579C444-7640-4C41-A214-33AC21D04C26">
-				<File Id="DROPPACKET_UM.PDB" Name="droppacket_um.pdb" Source="..\x64\Debug\droppacket_um.pdb" />
+				<File Id="DROPPACKET_UM.PDB" Name="droppacket_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\droppacket_um.pdb" />
 			</Component>
 			<Component Id="DROPPACKET_UNSAFE.O" DiskId="1" Guid="40156401-DDEA-4435-B559-E7071D251395">
-				<File Id="DROPPACKET_UNSAFE.O" Name="droppacket_unsafe.o" Source="..\x64\Debug\droppacket_unsafe.o" />
+				<File Id="DROPPACKET_UNSAFE.O" Name="droppacket_unsafe.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\droppacket_unsafe.o" />
 			</Component>
 			<Component Id="EBPFAPI.DLL_1" DiskId="1" Guid="11E5B9BE-7A8D-4ED9-AAC4-1474C0EB8C2E">
-				<File Id="EBPFAPI.DLL_1" Name="EbpfApi.dll" Source="..\x64\Debug\EbpfApi.dll" />
+				<File Id="EBPFAPI.DLL_1" Name="EbpfApi.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\EbpfApi.dll" />
 			</Component>
 			<Component Id="EBPFAPI.PDB_1" DiskId="1" Guid="EE7D42FC-C61B-45C1-88F8-4EC4577B9521">
-				<File Id="EBPFAPI.PDB_1" Name="EbpfApi.pdb" Source="..\x64\Debug\EbpfApi.pdb" />
+				<File Id="EBPFAPI.PDB_1" Name="EbpfApi.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\EbpfApi.pdb" />
 			</Component>
 			<Component Id="EBPFNETSH.DLL_1" DiskId="1" Guid="FF27C968-973A-40D0-A900-DFD796AD5D66">
-				<File Id="EBPFNETSH.DLL_1" Name="ebpfnetsh.dll" Source="..\x64\Debug\ebpfnetsh.dll" />
+				<File Id="EBPFNETSH.DLL_1" Name="ebpfnetsh.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\ebpfnetsh.dll" />
 			</Component>
 			<Component Id="EBPFNETSH.PDB_1" DiskId="1" Guid="E8A18768-3BFF-419F-85DB-AD5CF2419C6B">
-				<File Id="EBPFNETSH.PDB_1" Name="ebpfnetsh.pdb" Source="..\x64\Debug\ebpfnetsh.pdb" />
+				<File Id="EBPFNETSH.PDB_1" Name="ebpfnetsh.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\ebpfnetsh.pdb" />
 			</Component>
 			<Component Id="ENCAP_REFLECT_PACKET.O" DiskId="1" Guid="767274A3-97F5-4F35-BB27-1A7166708AD8">
-				<File Id="ENCAP_REFLECT_PACKET.O" Name="encap_reflect_packet.o" Source="..\x64\Debug\encap_reflect_packet.o" />
+				<File Id="ENCAP_REFLECT_PACKET.O" Name="encap_reflect_packet.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\encap_reflect_packet.o" />
 			</Component>
 			<Component Id="MAP.O" DiskId="1" Guid="C0461A4A-1195-4965-9710-8EED78A271F6">
-				<File Id="MAP.O" Name="map.o" Source="..\x64\Debug\map.o" />
+				<File Id="MAP.O" Name="map.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\map.o" />
 			</Component>
 			<Component Id="MAP_IN_MAP.O" DiskId="1" Guid="D5BF9636-2A17-4E6C-8EFF-824794F48A01">
-				<File Id="MAP_IN_MAP.O" Name="map_in_map.o" Source="..\x64\Debug\map_in_map.o" />
+				<File Id="MAP_IN_MAP.O" Name="map_in_map.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\map_in_map.o" />
 			</Component>
 			<Component Id="MAP_IN_MAP_V2.O" DiskId="1" Guid="D198FFAB-E146-4ED3-96B3-9FBED450C7D7">
-				<File Id="MAP_IN_MAP_V2.O" Name="map_in_map_v2.o" Source="..\x64\Debug\map_in_map_v2.o" />
+				<File Id="MAP_IN_MAP_V2.O" Name="map_in_map_v2.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\map_in_map_v2.o" />
 			</Component>
 			<Component Id="MAP_REUSE.O" DiskId="1" Guid="3C17B815-A950-4103-A9D3-DB8EB5F41B47">
-				<File Id="MAP_REUSE.O" Name="map_reuse.o" Source="..\x64\Debug\map_reuse.o" />
+				<File Id="MAP_REUSE.O" Name="map_reuse.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\map_reuse.o" />
 			</Component>
 			<Component Id="MAP_REUSE_2.O" DiskId="1" Guid="E32CF0E5-00E0-44D7-BE16-DD9FE35064D8">
-				<File Id="MAP_REUSE_2.O" Name="map_reuse_2.o" Source="..\x64\Debug\map_reuse_2.o" />
+				<File Id="MAP_REUSE_2.O" Name="map_reuse_2.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\map_reuse_2.o" />
 			</Component>
 			<Component Id="PIDTGID.O" DiskId="1" Guid="85723409-15B9-499B-94F1-2AE72A5C8D85">
-				<File Id="PIDTGID.O" Name="pidtgid.o" Source="..\x64\Debug\pidtgid.o" />
+				<File Id="PIDTGID.O" Name="pidtgid.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\pidtgid.o" />
 			</Component>
 			<Component Id="PRINTK.O" DiskId="1" Guid="6E02C38D-1024-495C-93C7-F998D7052CE5">
-				<File Id="PRINTK.O" Name="printk.o" Source="..\x64\Debug\printk.o" />
+				<File Id="PRINTK.O" Name="printk.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\printk.o" />
 			</Component>
 			<Component Id="PRINTK_UNSAFE.O" DiskId="1" Guid="10CBDD8C-BE25-43FD-86BB-A3A7A3129CE0">
-				<File Id="PRINTK_UNSAFE.O" Name="printk_unsafe.o" Source="..\x64\Debug\printk_unsafe.o" />
+				<File Id="PRINTK_UNSAFE.O" Name="printk_unsafe.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\printk_unsafe.o" />
 			</Component>
 			<Component Id="REFLECT_PACKET.O" DiskId="1" Guid="4AA8E3D7-1453-468B-98EE-3340BE55BA9C">
-				<File Id="REFLECT_PACKET.O" Name="reflect_packet.o" Source="..\x64\Debug\reflect_packet.o" />
+				<File Id="REFLECT_PACKET.O" Name="reflect_packet.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\reflect_packet.o" />
 			</Component>
 			<Component Id="RUN_TESTS.BAT" DiskId="1" Guid="C263C5FF-4A39-4078-9406-545F7D41DA13">
-				<File Id="RUN_TESTS.BAT" Name="run_tests.bat" Source="..\x64\Debug\run_tests.bat" />
+				<File Id="RUN_TESTS.BAT" Name="run_tests.bat" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\run_tests.bat" />
 			</Component>
 			<Component Id="SAMPLE_EBPF_EXT.PDB" DiskId="1" Guid="B77B362A-BC02-46E8-B2BB-05D0981B1CC9">
-				<File Id="SAMPLE_EBPF_EXT.PDB" Name="sample_ebpf_ext.pdb" Source="..\x64\Debug\sample_ebpf_ext.pdb" />
+				<File Id="SAMPLE_EBPF_EXT.PDB" Name="sample_ebpf_ext.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\sample_ebpf_ext.pdb" />
 			</Component>
 			<Component Id="SAMPLE_EBPF_EXT.SYS" DiskId="1" Guid="027287AF-9945-4CD9-B863-8E39712612F7">
-				<File Id="SAMPLE_EBPF_EXT.SYS" Name="sample_ebpf_ext.sys" Source="..\x64\Debug\sample_ebpf_ext.sys" />
+				<File Id="SAMPLE_EBPF_EXT.SYS" Name="sample_ebpf_ext.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\sample_ebpf_ext.sys" />
 			</Component>
 			<Component Id="SAMPLE_EXT_APP.EXE" DiskId="1" Guid="901A57AF-4B88-4F14-B84D-61FEA2979C40">
-				<File Id="SAMPLE_EXT_APP.EXE" Name="sample_ext_app.exe" Source="..\x64\Debug\sample_ext_app.exe" />
+				<File Id="SAMPLE_EXT_APP.EXE" Name="sample_ext_app.exe" Source="$(var.sample_ext_app.TargetDir)sample_ext_app.exe" />
 			</Component>
 			<Component Id="SAMPLE_EXT_APP.PDB" DiskId="1" Guid="9DE5D44E-0C55-4959-AF57-F5735E92089A">
-				<File Id="SAMPLE_EXT_APP.PDB" Name="sample_ext_app.pdb" Source="..\x64\Debug\sample_ext_app.pdb" />
+				<File Id="SAMPLE_EXT_APP.PDB" Name="sample_ext_app.pdb" Source="$(var.sample_ext_app.TargetDir)sample_ext_app.pdb" />
 			</Component>
 			<Component Id="TAIL_CALL_MAP.O" DiskId="1" Guid="A3F68C4D-00BF-4FB7-8B49-2BFC69AF7ABB">
-				<File Id="TAIL_CALL_MAP.O" Name="tail_call_map.o" Source="..\x64\Debug\tail_call_map.o" />
+				<File Id="TAIL_CALL_MAP.O" Name="tail_call_map.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\tail_call_map.o" />
 			</Component>
 			<Component Id="TAIL_CALL_MULTIPLE.O" DiskId="1" Guid="2779762A-9B87-490B-83CF-30A0C0C28CF3">
-				<File Id="TAIL_CALL_MULTIPLE.O" Name="tail_call_multiple.o" Source="..\x64\Debug\tail_call_multiple.o" />
+				<File Id="TAIL_CALL_MULTIPLE.O" Name="tail_call_multiple.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\tail_call_multiple.o" />
 			</Component>
 			<Component Id="TEST_SAMPLE_EBPF.O" DiskId="1" Guid="5E7F82E9-9631-44C6-A597-18DD96C87C44">
-				<File Id="TEST_SAMPLE_EBPF.O" Name="test_sample_ebpf.o" Source="..\x64\Debug\test_sample_ebpf.o" />
+				<File Id="TEST_SAMPLE_EBPF.O" Name="test_sample_ebpf.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\test_sample_ebpf.o" />
 			</Component>
 			<Component Id="TEST_UTILITY_HELPERS.O" DiskId="1" Guid="B895F798-8A2D-4757-BDD2-F7A68860C92A">
-				<File Id="TEST_UTILITY_HELPERS.O" Name="test_utility_helpers.o" Source="..\x64\Debug\test_utility_helpers.o" />
+				<File Id="TEST_UTILITY_HELPERS.O" Name="test_utility_helpers.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\test_utility_helpers.o" />
 			</Component>
 			<Component Id="UNIT_TESTS.EXE" DiskId="1" Guid="CCF26677-3DDF-424F-80E8-184F65E323BA">
-				<File Id="UNIT_TESTS.EXE" Name="unit_tests.exe" Source="..\x64\Debug\unit_tests.exe" />
+				<File Id="UNIT_TESTS.EXE" Name="unit_tests.exe" Source="$(var.unit_tests.TargetDir)unit_tests.exe" />
 			</Component>
 			<Component Id="UNIT_TESTS.PDB" DiskId="1" Guid="3CF32625-22F9-4ABD-A0BF-44FA7EA2BCDE">
-				<File Id="UNIT_TESTS.PDB" Name="unit_tests.pdb" Source="..\x64\Debug\unit_tests.pdb" />
+				<File Id="UNIT_TESTS.PDB" Name="unit_tests.pdb" Source="$(var.unit_tests.TargetDir)unit_tests.pdb" />
 			</Component>
 		</ComponentGroup>
 	</Fragment>

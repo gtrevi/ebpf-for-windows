@@ -81,6 +81,14 @@ SPDX-License-Identifier: MIT
       <RefProjectOutputGroups>Binaries;Content;Satellites</RefProjectOutputGroups>
       <RefTargetDir>INSTALLFOLDER</RefTargetDir>
     </ProjectReference>
+    <ProjectReference Include="..\tests\api_test\api_test.vcxproj">
+      <Name>api_test</Name>
+      <Project>{12161211-5463-4aa9-9b6e-552552b475dc}</Project>
+      <Private>True</Private>
+      <DoNotHarvest>True</DoNotHarvest>
+      <RefProjectOutputGroups>Binaries;Content;Satellites</RefProjectOutputGroups>
+      <RefTargetDir>INSTALLFOLDER</RefTargetDir>
+    </ProjectReference>
     <ProjectReference Include="..\tests\sample\ext\app\sample_ext_app.vcxproj">
       <Name>sample_ext_app</Name>
       <Project>{7358d8bd-4123-4b2d-86c0-87f6ba6ced76}</Project>
