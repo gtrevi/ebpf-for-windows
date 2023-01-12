@@ -12,14 +12,14 @@ SPDX-License-Identifier: MIT
 		<!-- Define global properties -->
 		<PropertyRef Id="WIX_ACCOUNT_LOCALSERVICE" />
 		<Property Id="ARPCONTACT" Value="opencode@microsoft.com" />
-		<Property Id="INSTALL_ROOT" Secure="yes">
+		<Property Id="INSTALLFOLDER" Secure="yes">
 			<RegistrySearch Id="FindInstallLocation" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\[WIX_UPGRADE_DETECTED]" Name="InstallLocation" Type="raw" Win64="yes" />
 		</Property>
 		<Property Id="WIX_DOWNGRADE_DETECTED" Secure="yes" />
 		<Property Id="WIX_UPGRADE_DETECTED" Secure="yes" />
 
 		<!-- Define the Product features and installation steps -->
-		<Feature Id="ProductFeature" Title="eBPF for Windows Installer" ConfigurableDirectory="INSTALL_ROOT" Display="expand" Level="1" Absent="disallow">
+		<Feature Id="ProductFeature" Title="eBPF for Windows Installer" ConfigurableDirectory="INSTALLFOLDER" Display="expand" Level="1" Absent="disallow">
 			<Feature Id="eBPF_Core_Components" Level="1" Title="Core components" Absent="disallow">
 				<ComponentGroupRef Id="eBPF_Core_Components" />
 				<ComponentGroupRef Id="eBPF_Service" />
@@ -69,9 +69,9 @@ SPDX-License-Identifier: MIT
 		<!-- Define the UI style & behavior -->
 		<UIRef Id="WixUI_FeatureTree" />
 		<WixVariable Id="WixUILicenseRtf" Value="$(var.SolutionDir)LICENSE.rtf" />
-		<!--<WixVariable Id="WixUIBannerBmp" Value="res\eBPFBanner_493x58_white.bmp"/>
-		<WixVariable Id="WixUIDialogBmp" Value="res\eBPFDialog_493x312_white.bmp"/>-->
-		<CustomAction Id="SetWixInstallLocation" Property="ARPINSTALLLOCATION" Value="[INSTALL_ROOT]" />
+		<WixVariable Id="WixUIBannerBmp" Value="res\eBPFBanner_493x58.bmp"/>
+		<WixVariable Id="WixUIDialogBmp" Value="res\eBPFDialog_493x312.bmp"/>
+		<CustomAction Id="SetWixInstallLocation" Property="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" />
 		<InstallUISequence>
 			<Custom Action="SetWixInstallLocation" After="CostFinalize" />
 		</InstallUISequence>
@@ -82,7 +82,7 @@ SPDX-License-Identifier: MIT
 	<Fragment>
 		<Directory Id="TARGETDIR" Name="SourceDir">
 			<Directory Id="ProgramFiles64Folder">
-				<Directory Id="INSTALL_ROOT" Name="eBPFforWindows">
+				<Directory Id="INSTALLFOLDER" Name="eBPFforWindows">
 					<Directory Id="dir_drivers" Name="drivers"/>
 					<Directory Id="dir_include" Name="include">
 						<Directory Id="dir_include_asm" Name="asm" />
@@ -105,7 +105,7 @@ SPDX-License-Identifier: MIT
 
 	<!-- Define the product's <Runtime> components -->
 	<Fragment>
-		<ComponentGroup Id="eBPF_Core_Components" Directory="INSTALL_ROOT">
+		<ComponentGroup Id="eBPF_Core_Components" Directory="INSTALLFOLDER">
 			<Component Id="LICENSE" Guid="{AF22EAE5-7D8D-4F22-BB64-6B6A079A2947}">
 				<File Id="LICENSE.txt" Name="LICENSE.txt" DiskId="1" Source="$(var.SolutionDir)LICENSE.txt" />
 			</Component>
@@ -123,6 +123,9 @@ SPDX-License-Identifier: MIT
 			</Component>
 			<Component Id="EBPFAPI.PDB" DiskId="1" Guid="{6912E957-E682-41CB-9C53-1D0B886528F7}">
 				<File Id="EBPFAPI.PDB" Name="EbpfApi.pdb" Source="$(var.EbpfApi.TargetDir)EbpfApi.pdb" />
+			</Component>
+			<Component Id="EBPFSVC.PDB" DiskId="1" Guid="{D1935DF0-2FC7-42F5-81E5-19AF88D6244B}">
+				<File Id="EBPFSVC.PDB" Name="EbpfSvc.pdb" Source="$(var.ebpfsvc.TargetDir)ebpfsvc.pdb" />
 			</Component>
 			<Component Id="EBPF_PRINTK.GUID" DiskId="1" Guid="{77EB156D-046E-4BD6-8F57-CCA1DB031B0B}">
 				<File Id="EBPF_PRINTK.GUID" Name="ebpf-printk.guid" Source="$(var.SolutionDir)\scripts\ebpf-printk.guid" />
@@ -151,7 +154,7 @@ SPDX-License-Identifier: MIT
 		<CustomAction Id="Setup_eBPF_store" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Return="ignore" Impersonate="no"/>
 
 		<!--Install eBPF Service -->
-		<ComponentGroup Id="eBPF_Service" Directory="INSTALL_ROOT">
+		<ComponentGroup Id="eBPF_Service" Directory="INSTALLFOLDER">
 			<Component Id="eBPF_Service" Guid="{25F4F9A3-78EB-4598-9982-98FB65377A51}">
 				<File Source="$(var.ebpfsvc.TargetPath)" KeyPath="yes" />
 				<ServiceInstall Id="eBPFSvcInstaller" Name="eBPFSvc" DisplayName="eBPF Service" Description="eBPF Service"
@@ -179,6 +182,9 @@ SPDX-License-Identifier: MIT
 			<Component Id="eBPFCore.sys" Guid="{5A6F4BA2-7FCB-48F7-BC6A-52C204E4A91A}">
 				<File Id="eBPFCore.sys" Name="eBPFCore.sys" Source="$(var.EbpfCore.TargetPath)" KeyPath="yes" />
 			</Component>
+			<Component Id="eBPFCore.pdb" Guid="{DDE1BBD0-F440-4D54-97D0-D10DB511BACB}">
+				<File Id="eBPFCore.pdb" Name="eBPFCore.pdb" Source="$(var.EbpfCore.TargetDir)eBPFCore.pdb" KeyPath="yes" />
+			</Component>
 		</ComponentGroup>
 		<SetProperty Id="eBPFCore_Driver_install" Value='"sc.exe" create eBPFCore.sys type=kernel start=demand binpath="[#eBPFCore.sys]"' Before="eBPFCore_Driver_install" Sequence="execute"/>
 		<CustomAction Id="eBPFCore_Driver_install" BinaryKey="WixCA" DllEntry="WixQuietExec64" Execute="deferred" Return="check" Impersonate="no"/>
@@ -200,6 +206,9 @@ SPDX-License-Identifier: MIT
 			</Component>
 			<Component Id="NetEbpfExt.sys" Guid="{3ADAA711-7F62-472A-A60D-589D543ED507}">
 				<File Id="NetEbpfExt.sys" Name="NetEbpfExt.sys" Source="$(var.netebpfext.TargetPath)" KeyPath="yes" />
+			</Component>
+			<Component Id="NetEbpfExt.pdb" Guid="{3B35751C-693A-47C0-A258-97741D8B72CC}">
+				<File Id="NetEbpfExt.pdb" Name="NetEbpfExt.pdb" Source="$(var.netebpfext.TargetDir)NetEbpfExt.pdb" KeyPath="yes" />
 			</Component>
 		</ComponentGroup>
 		<SetProperty Id="NetEbpfExt_Driver_install" Value='"sc.exe" create NetEbpfExt.sys type=kernel start=demand binpath="[#NetEbpfExt.sys]"' Before="NetEbpfExt_Driver_install" Sequence="execute"/>
