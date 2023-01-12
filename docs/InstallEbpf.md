@@ -11,6 +11,18 @@ Do the following from within the VM:
 1. Download the `.msi` file from the [latest release on GitHub](https://github.com/microsoft/ebpf-for-windows/releases).
 1. Execute the `.msi` file you downloaded.
 
+Unattended installation can be done through the following commands (full Dev&Test installation):
+
+```bash
+# Install
+C:\Windows\system32\msiexec.exe /i ebpf-for-windows_installer.msi ADDLOCAL=eBPF_Development,eBPF_Testing /qn
+
+# Uninstall
+C:\Windows\system32\msiexec.exe /x ebpf-for-windows_installer.msi ADDLOCAL=eBPF_Development,eBPF_Testing /qn
+```
+
+>**Note**: you can customize the installation by choosing what **optional** features should be installed/unistalled in the `ADDLOCAL` parameter. The above commands, besided the mandatory *eBPF Runtime Components*, also install the *Development* and *Testing* components.
+
 The following components are shown in the MSI to select from:
 
 * **Core Components**: this feature adds the eBPF runtime and core components, which are also required by the other components. If you select only this
