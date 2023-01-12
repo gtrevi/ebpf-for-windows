@@ -131,8 +131,8 @@ SPDX-License-Identifier: MIT
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="res\eBPFBanner_493x58.bmp" />
-    <Content Include="res\eBPFDialog_493x312.bmp" />
+    <Content Include="res\eBPFBanner_493x58_white.bmp" />
+    <Content Include="res\eBPFDialog_493x312_white.bmp" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="res" />
