@@ -11,7 +11,7 @@
 .*\.sln$
 .*\.vsdx$
 
-# Directories
+# Directories with files that don't support embedding license info
 .*corpus
 
 # Generated files
