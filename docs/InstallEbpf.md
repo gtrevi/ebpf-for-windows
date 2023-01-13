@@ -8,29 +8,31 @@ install or update the eBPF installation in the VM.
 
 Do the following from within the VM:
 
-1. Download the `.msi` file from the [latest release on GitHub](https://github.com/microsoft/ebpf-for-windows/releases).
-1. Execute the `.msi` file you downloaded.
+1. Download the `ebpf-for-windows_installer.msi` file from the [latest release on GitHub](https://github.com/microsoft/ebpf-for-windows/releases).
+1. Execute the `ebpf-for-windows_installer.msi` file you downloaded.
+1. After accepting the License and selecting the desired installation folder (default will be "`C:\Program Files\eBPFforWindows`"), the following components will be selectable from the *Installation Wizard*:
 
-Unattended installation can be done through the following commands (examples do full Dev&Test installation/unistallation, in the "`C:\Program Files\eBPFforWindows`" folder):
+    * **Runtime Components** (mandatory): this feature adds the eBPF runtime and core components, which are also required by the other components. If you select only this
+      feature, only [native code generation](NativeCodeGeneration.md) is enabled.
+    * **Development** (optional): this feature adds headers and libraries used for development. If you only want to use eBPF for development
+      rather than running programs, you can [use the NuGet package](GettingStarted.md#using-ebpf-in-development)
+      instead of the MSI.
+    * **Testing** (optional): this feature adds tests for the eBPF runtime for use by eBPF runtime developers.
 
-```bash
-# Install
-C:\Windows\system32\msiexec.exe /i ebpf-for-windows_installer.msi INSTALLFOLDER="C:\Program Files\eBPFforWindows" ADDLOCAL=eBPF_Development,eBPF_Testing /qn
+An **unattended install/uninstall** is also supported, through the following commands (examples show a full Dev&Test installation/unistallation, using "`C:\Program Files\eBPFforWindows`" as a custo installation folder):
 
-# Uninstall
-C:\Windows\system32\msiexec.exe /x ebpf-for-windows_installer.msi INSTALLFOLDER="C:\Program Files\eBPFforWindows" ADDLOCAL=eBPF_Development,eBPF_Testing /qn
-```
+* Installation:
 
->**Note**: you can customize the installation by choosing what **optional** features should be installed/unistalled in the `ADDLOCAL` parameter. The above commands, besided the mandatory *eBPF Runtime Components*, also install the *Development* and *Testing* components.
+    ```bash
+    C:\Windows\system32\msiexec.exe /i ebpf-for-windows_installer.msi INSTALLFOLDER="C:\Program Files\eBPFforWindows" ADDLOCAL=eBPF_Development,eBPF_Testing /qn
+    ```
+    >**Note**: like in the in the graphical *Installation Wizard*, you can also customize the installation by choosing what **optional** features (i.e., `eBPF_Development` and/or `eBPF_Testing`) should be installed and assigning the comma-separated values to the `ADDLOCAL` parameter. The above commands, besides the mandatory `Runtime_Components`, also install the *Development* and *Testing* components.
 
-The following components are shown in the MSI to select from:
+* Uninstallation:
 
-* **Core Components**: this feature adds the eBPF runtime and core components, which are also required by the other components. If you select only this
-  feature, only [native code generation](NativeCodeGeneration.md) is enabled.
-* **Development**: this feature adds headers and libraries used for development. If you only want to use eBPF for development
-  rather than running programs, you can [use the NuGet package](GettingStarted.md#using-ebpf-in-development)
-  instead of the MSI.
-* **Testing**: this feature adds tests for the eBPF runtime for use by eBPF runtime developers.
+    ```bash
+    C:\Windows\system32\msiexec.exe /x ebpf-for-windows_installer.msi /qn
+    ```
 
 ### Method 2 (Install files you built yourself)
 This method uses a machine that
