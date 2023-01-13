@@ -23,8 +23,9 @@ SPDX-License-Identifier: MIT
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
   </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="Product.wxs"  Condition="'$(Analysis)'==''"/>
+  <!-- In accordance to what defined in sample.vcxproj, the MSI build is disabled for the 'Analysis' CI/CD build, as it  does not generate the *.o artifacts. -->
+  <ItemGroup  Condition="'$(Analysis)'==''">
+    <Compile Include="Product.wxs"/>
   </ItemGroup>
   <ItemGroup>
     <WixExtension Include="WixUtilExtension">
