@@ -281,6 +281,7 @@ Done:
     EBPF_RETURN_RESULT(retval);
 }
 
+#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* request)
 {
@@ -329,6 +330,7 @@ _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* req
 Done:
     EBPF_RETURN_RESULT(retval);
 }
+#endif
 
 _Must_inspect_result_ ebpf_result_t
 ebpf_core_resolve_helper(
@@ -357,6 +359,7 @@ Done:
     EBPF_RETURN_RESULT(return_value);
 }
 
+#if defined(CONFIG_BPF_JIT_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_resolve_helper(
     _In_ const ebpf_operation_resolve_helper_request_t* request,
@@ -402,6 +405,7 @@ Done:
     ebpf_free(request_helper_ids);
     EBPF_RETURN_RESULT(return_value);
 }
+#endif
 
 _Must_inspect_result_ ebpf_result_t
 ebpf_core_resolve_maps(
@@ -442,6 +446,7 @@ Done:
     EBPF_RETURN_RESULT(return_value);
 }
 
+#if defined(CONFIG_BPF_JIT_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_resolve_map(
     _In_ const struct _ebpf_operation_resolve_map_request* request,
@@ -476,6 +481,7 @@ _ebpf_core_protocol_resolve_map(
 Done:
     EBPF_RETURN_RESULT(return_value);
 }
+#endif
 
 _Must_inspect_result_ ebpf_result_t
 ebpf_core_create_map(
@@ -525,6 +531,7 @@ _ebpf_core_protocol_create_map(
     EBPF_RETURN_RESULT(retval);
 }
 
+#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_create_program(
     _In_ const ebpf_operation_create_program_request_t* request, _Inout_ ebpf_operation_create_program_reply_t* reply)
@@ -567,6 +574,7 @@ _ebpf_core_protocol_create_program(
 Done:
     EBPF_RETURN_RESULT(retval);
 }
+#endif
 
 static ebpf_result_t
 _ebpf_core_protocol_load_native_module(
@@ -1285,6 +1293,7 @@ _ebpf_core_protocol_close_handle(_In_ const ebpf_operation_close_handle_request_
     EBPF_RETURN_RESULT(ebpf_handle_close(request->handle));
 }
 
+#if defined(CONFIG_BPF_JIT_ENABLED)
 static uint64_t
 _ebpf_core_protocol_get_ec_function(
     _In_ const ebpf_operation_get_ec_function_request_t* request, _Inout_ ebpf_operation_get_ec_function_reply_t* reply)
@@ -1296,6 +1305,7 @@ _ebpf_core_protocol_get_ec_function(
     reply->address = (uint64_t)ebpf_log_function;
     EBPF_RETURN_RESULT(EBPF_SUCCESS);
 }
+#endif
 
 // Get helper info for a program or program type.  This is used by the jitter/verifier,
 // not by libbpf which instead uses ebpf_program_get_info
