@@ -299,6 +299,7 @@ _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* req
     }
 
     if (request->code_type == EBPF_CODE_JIT) {
+#if defined(CONFIG_BPF_JIT_ENABLED)
         if (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_HYPERVISOR_KERNEL_MODE) {
             retval = EBPF_BLOCKED_BY_POLICY;
             EBPF_LOG_MESSAGE(
@@ -307,6 +308,12 @@ _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* req
                 "code_type == EBPF_CODE_JIT blocked by EBPF_CODE_INTEGRITY_HYPERVISOR_KERNEL_MODE");
             goto Done;
         }
+#else
+        retval = EBPF_BLOCKED_BY_POLICY;
+        EBPF_LOG_MESSAGE(
+            EBPF_TRACELOG_LEVEL_ERROR, EBPF_TRACELOG_KEYWORD_CORE, "code_type == EBPF_CODE_JIT blocked by policy");
+        goto Done;
+#endif
     }
 
     retval = ebpf_safe_size_t_subtract(
@@ -891,9 +898,8 @@ _ebpf_core_protocol_program_test_run_complete(
 {
     ebpf_operation_program_test_run_reply_t* reply = (ebpf_operation_program_test_run_reply_t*)completion_context;
     if (result == EBPF_SUCCESS) {
-        reply->header.length = (uint16_t)(
-            EBPF_OFFSET_OF(ebpf_operation_program_test_run_reply_t, data) + options->data_size_out +
-            options->context_size_out);
+        reply->header.length =
+            (uint16_t)(EBPF_OFFSET_OF(ebpf_operation_program_test_run_reply_t, data) + options->data_size_out + options->context_size_out);
         reply->return_value = options->return_value;
         reply->context_offset = (uint16_t)options->data_size_out;
         reply->duration = options->duration;
@@ -1414,8 +1420,8 @@ _ebpf_core_protocol_serialize_map_info_reply(
         &required_serialization_length);
 
     if (result != EBPF_SUCCESS) {
-        map_info_reply->header.length = (uint16_t)(
-            required_serialization_length + EBPF_OFFSET_OF(ebpf_operation_get_pinned_map_info_reply_t, data));
+        map_info_reply->header.length =
+            (uint16_t)(required_serialization_length + EBPF_OFFSET_OF(ebpf_operation_get_pinned_map_info_reply_t, data));
     } else
         map_info_reply->map_count = map_count;
 
@@ -2117,13 +2123,19 @@ ALIAS_TYPES(get_handle_by_id, get_link_handle_by_id)
 ALIAS_TYPES(get_handle_by_id, get_map_handle_by_id)
 ALIAS_TYPES(get_handle_by_id, get_program_handle_by_id)
 
+// #gtrevi: TBD
 static ebpf_protocol_handler_t _ebpf_protocol_handlers[] = {
-
+#if defined(CONFIG_BPF_JIT_ENABLED)
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_helper, helper_id, address, PROTOCOL_JIT_MODE),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_map, map_handle, address, PROTOCOL_JIT_MODE),
+#endif
+#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_FIXED_REPLY(create_program, data, PROTOCOL_JIT_OR_INTERPRET_MODE),
+#endif
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_FIXED_REPLY(create_map, data, PROTOCOL_ALL_MODES),
+#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(load_code, code, PROTOCOL_JIT_OR_INTERPRET_MODE),
+#endif
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(map_find_element, key, value, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(map_update_element, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(map_update_element_with_handle, key, PROTOCOL_ALL_MODES),
@@ -2136,7 +2148,9 @@ static ebpf_protocol_handler_t _ebpf_protocol_handlers[] = {
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_FIXED_REPLY(link_program, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(unlink_program, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_NO_REPLY(close_handle, PROTOCOL_ALL_MODES),
+#if defined(CONFIG_BPF_JIT_ENABLED)
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_FIXED_REPLY(get_ec_function, PROTOCOL_JIT_MODE),
+#endif
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_VARIABLE_REPLY(get_program_info, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_VARIABLE_REPLY(get_pinned_map_info, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_FIXED_REPLY(get_link_handle_by_id, PROTOCOL_ALL_MODES),
@@ -2166,11 +2180,15 @@ ebpf_core_get_protocol_handler_properties(
     // Native is always permitted.
     bool native_permitted = true;
 
-    // JIT is permitted if HVCI is off.
-    bool jit_permitted = (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_DEFAULT) ? true : false;
+#if defined(CONFIG_BPF_JIT_ENABLED)
+    // JIT is permitted only if HVCI is off.
+    bool jit_permitted = (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_DEFAULT);
+#else
+    bool jit_permitted = false;
+#endif
 
-    // Interpret is only permitted if CONFIG_BPF_JIT_ALWAYS_ON is not set.
-#if defined(CONFIG_BPF_JIT_ALWAYS_ON)
+    // Interpret is only permitted if CONFIG_BPF_INTERPRETER_ENABLED is not set.
+#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
     bool interpret_permitted = false;
 #else
     bool interpret_permitted = true;

@@ -3,7 +3,8 @@
 
 option(EBPFFORWINDOWS_ENABLE_TESTS "Set to true to enable tests" true)
 option(EBPFFORWINDOWS_ENABLE_INSTALL "Set to true to enable the install target")
-option(EBPFFORWINDOWS_ENABLE_DISABLE_EBPF_INTERPRETER "Set to true to compile with the interpreter always disabled")
+option(EBPFFORWINDOWS_ENABLE_JIT "Set to true to compile with JIT enabled")
+option(EBPFFORWINDOWS_ENABLE_INTERPRETER "Set to true to compile with the interpreter enabled")
 
 set(EBPFFORWINDOWS_CODESIGN_CERTIFICATE_PATH "" CACHE STRING "Path to the certificate used for signing")
 set(EBPFFORWINDOWS_CODESIGN_PASSWORD_ENV_VAR "" CACHE STRING "Name of the environment variable containing the certificate password")
@@ -19,7 +20,8 @@ endif()
 
 message(STATUS "ebpf-for-windows - Tests: ${EBPFFORWINDOWS_ENABLE_TESTS}")
 message(STATUS "ebpf-for-windows - Install targets: ${EBPFFORWINDOWS_ENABLE_INSTALL}")
-message(STATUS "ebpf-for-windows - eBPF interpreter disabled: ${EBPFFORWINDOWS_ENABLE_DISABLE_EBPF_INTERPRETER}")
+message(STATUS "ebpf-for-windows - eBPF interpreter disabled: ${EBPFFORWINDOWS_ENABLE_INTERPRETER}")
+message(STATUS "ebpf-for-windows - eBPF JIT disabled: ${EBPFFORWINDOWS_ENABLE_JIT}")
 message(STATUS "ebpf-for-windows - Code signing enabled: ${codesign_enabled}")
 message(STATUS "ebpf-for-windows - WDK_WINVER: ${EBPFFORWINDOWS_WDK_WINVER}")
 message(STATUS "ebpf-for-windows - KMDF version: ${EBPFFORWINDOWS_WDK_KMDF_VERSION}")

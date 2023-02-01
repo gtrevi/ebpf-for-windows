@@ -300,10 +300,12 @@ _ebpf_program_epoch_free(_In_ _Post_invalid_ void* context)
     ebpf_extension_unload(program->info_extension_client);
 
     switch (program->parameters.code_type) {
+#if defined(CONFIG_BPF_JIT_ENABLED)
     case EBPF_CODE_JIT:
         ebpf_unmap_memory(program->code_or_vm.code.code_memory_descriptor);
         break;
-#if !defined(CONFIG_BPF_JIT_ALWAYS_ON)
+#endif
+#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
     case EBPF_CODE_EBPF:
         if (program->code_or_vm.vm) {
             ubpf_destroy(program->code_or_vm.vm);
@@ -643,12 +645,14 @@ _ebpf_program_load_machine_code(
 {
     EBPF_LOG_ENTRY();
     ebpf_result_t return_value;
-    uint8_t* local_machine_code = NULL;
     ebpf_memory_descriptor_t* local_code_memory_descriptor = NULL;
 
     ebpf_assert(program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE);
 
     if (program->parameters.code_type == EBPF_CODE_JIT) {
+#if defined(CONFIG_BPF_JIT_ENABLED)
+        uint8_t* local_machine_code = NULL;
+
         program->helper_function_addresses_changed_callback = _ebpf_program_update_jit_helpers;
         program->helper_function_addresses_changed_context = program;
         return_value = _ebpf_program_update_helpers(program);
@@ -675,6 +679,10 @@ _ebpf_program_load_machine_code(
         program->code_or_vm.code.code_memory_descriptor = local_code_memory_descriptor;
         program->code_or_vm.code.code_pointer = local_machine_code;
         local_code_memory_descriptor = NULL;
+#else
+        return_value = EBPF_BLOCKED_BY_POLICY;
+        goto Done;
+#endif
     } else {
         ebpf_assert(machine_code_size == 0);
         if (code_context == NULL) {
@@ -729,7 +737,7 @@ _ebpf_program_update_interpret_helpers(_Inout_ ebpf_program_t* program, _Inout_ 
         if (helper == NULL)
             continue;
 
-#if !defined(CONFIG_BPF_JIT_ALWAYS_ON)
+#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
         if (ubpf_register(program->code_or_vm.vm, (unsigned int)index, NULL, (void*)helper) < 0) {
             EBPF_LOG_MESSAGE_UINT64(
                 EBPF_TRACELOG_LEVEL_ERROR, EBPF_TRACELOG_KEYWORD_PROGRAM, "ubpf_register failed", index);
@@ -743,6 +751,7 @@ Exit:
     EBPF_RETURN_RESULT(result);
 }
 
+//#gtrevi: TBD
 static ebpf_result_t
 _ebpf_program_update_jit_helpers(_Inout_ ebpf_program_t* program, _Inout_ void* context)
 {
@@ -879,7 +888,7 @@ Exit:
     return return_value;
 }
 
-#if !defined(CONFIG_BPF_JIT_ALWAYS_ON)
+#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
 static ebpf_result_t
 _ebpf_program_load_byte_code(
     _Inout_ ebpf_program_t* program, _In_ const ebpf_instruction_t* instructions, size_t instruction_count)
@@ -965,16 +974,30 @@ ebpf_program_load_code(
     ebpf_assert(
         (code_type == EBPF_CODE_NATIVE && code_context != NULL) ||
         (code_type != EBPF_CODE_NATIVE && code_context == NULL));
-    if (program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE)
+
+    switch (program->parameters.code_type) {
+
+    case EBPF_CODE_JIT:
+#if defined(CONFIG_BPF_JIT_ENABLED)
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
-    else if (program->parameters.code_type == EBPF_CODE_EBPF)
-#if !defined(CONFIG_BPF_JIT_ALWAYS_ON)
+#else
+        result = EBPF_BLOCKED_BY_POLICY;
+#endif
+        break;
+
+    case EBPF_CODE_EBPF:
+#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
         result = _ebpf_program_load_byte_code(
             program, (const ebpf_instruction_t*)code, code_size / sizeof(ebpf_instruction_t));
 #else
         result = EBPF_BLOCKED_BY_POLICY;
 #endif
-    else {
+
+    case EBPF_CODE_NATIVE:
+        result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
+        break;
+
+    default: {
         EBPF_LOG_MESSAGE_UINT64(
             EBPF_TRACELOG_LEVEL_ERROR,
             EBPF_TRACELOG_KEYWORD_PROGRAM,
@@ -982,6 +1005,7 @@ ebpf_program_load_code(
             program->parameters.code_type);
 
         result = EBPF_INVALID_ARGUMENT;
+    }
     }
     EBPF_RETURN_RESULT(result);
 }
@@ -1041,13 +1065,21 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
     program_state_stored = true;
 
     for (state.count = 0; state.count < MAX_TAIL_CALL_CNT; state.count++) {
-        if (current_program->parameters.code_type == EBPF_CODE_JIT ||
-            current_program->parameters.code_type == EBPF_CODE_NATIVE) {
+
+        if (current_program->parameters.code_type == EBPF_CODE_JIT) {
+#if defined(CONFIG_BPF_JIT_ENABLED)
+            ebpf_program_entry_point_t function_pointer;
+            function_pointer = (ebpf_program_entry_point_t)(current_program->code_or_vm.code.code_pointer);
+            *result = (function_pointer)(context);
+#else
+            *result = 0;
+#endif
+        } else if (current_program->parameters.code_type == EBPF_CODE_NATIVE) {
             ebpf_program_entry_point_t function_pointer;
             function_pointer = (ebpf_program_entry_point_t)(current_program->code_or_vm.code.code_pointer);
             *result = (function_pointer)(context);
         } else {
-#if !defined(CONFIG_BPF_JIT_ALWAYS_ON)
+#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
             uint64_t out_value;
             int ret = (uint32_t)(ubpf_exec(current_program->code_or_vm.vm, context, 1024, &out_value));
             if (ret < 0) {
@@ -1486,7 +1518,7 @@ _ebpf_helper_id_to_index_compare(const void* lhs, const void* rhs)
  * 2) During initialization, the program binds to the program information provider.
  * 3) During the attach callback, the program information is hashed and stored.
  * 4) The verifier then queries the program information from the ebpf_program_t object and uses it to verify the program
- * safety. 
+ * safety.
  * 5) If the program information provider is reattached, the program information is hashed and compared with the
  * hash stored in the program and the program is rejected if the hash does not match. This ensures that the program
  * information the verifier uses to verify the program safety is the same as the program information the program uses to

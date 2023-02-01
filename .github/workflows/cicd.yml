@@ -42,7 +42,29 @@ jobs:
       build_artifact: Build-x64
       generate_release_package: true
       build_nuget: true
-      build_options: /p:ReleaseJIT='True'
+      build_options: /p:EnableJIT='True' /p:EnableInterpreter='True' /p:ReleaseJIT='True'
+
+  # Perform the regular_JIT-only build.
+  regular_JIT-only:
+    # Always run this job.
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      build_artifact: Build-x64
+      generate_release_package: true
+      build_nuget: true
+      build_options: /p:EnableJIT='True' /p:ReleaseJIT='True'
+
+  # Perform the regular_Interpreter-only build.
+  regular_Interpreter-only:
+    # Always run this job.
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      build_artifact: Build-x64
+      generate_release_package: true
+      build_nuget: true
+      build_options: /p:EnableInterpreter='True'
 
   cmake:
     # Always run this job.
