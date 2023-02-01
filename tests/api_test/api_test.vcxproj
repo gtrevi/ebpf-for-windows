@@ -65,8 +65,7 @@
       <AdditionalDependencies>ws2_32.lib;Secur32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
-  </ItemDefinitionGroup>
-    <ItemDefinitionGroup Condition="'$(EnableJIT)'=='True'">
+  <ItemDefinitionGroup Condition="'$(EnableJIT)'=='True'">
     <ClCompile>
         <PreprocessorDefinitions>CONFIG_BPF_JIT_ENABLED=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
