@@ -50,7 +50,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
     uses: ./.github/workflows/reusable-build.yml
     with:
-      build_artifact: Build-x64
+      build_artifact: Build-x64-JIT-only
       generate_release_package: true
       build_nuget: true
       build_options: /p:EnableJIT='True' /p:ReleaseJIT='True'
@@ -61,7 +61,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
     uses: ./.github/workflows/reusable-build.yml
     with:
-      build_artifact: Build-x64
+      build_artifact: Build-x64-Interpreter-only
       generate_release_package: true
       build_nuget: true
       build_options: /p:EnableInterpreter='True'
