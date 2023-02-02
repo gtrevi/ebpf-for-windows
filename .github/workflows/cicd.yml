@@ -199,7 +199,7 @@ jobs:
     with:
       build_artifact: Build-x64-Analyze
       # Analysis on external projects is conditional, as on small CI/CD VMs the compiler can run OOM
-      build_options: /p:Analysis='True' /p:AnalysisOnExternal='False'
+      build_options: /p:EnableJIT='True' /p:EnableInterpreter='True' /p:Analysis='True' /p:AnalysisOnExternal='False'
 
   # Build with C++ address sanitizer.
   sanitize:
