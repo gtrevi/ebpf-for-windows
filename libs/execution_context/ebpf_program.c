@@ -304,12 +304,18 @@ _ebpf_program_epoch_free(_In_ _Post_invalid_ void* context)
     case EBPF_CODE_JIT:
         ebpf_unmap_memory(program->code_or_vm.code.code_memory_descriptor);
         break;
+#else
+    case EBPF_CODE_JIT:
+        break;
 #endif
 #if defined(CONFIG_BPF_INTERPRETER_ENABLED)
     case EBPF_CODE_EBPF:
         if (program->code_or_vm.vm) {
             ubpf_destroy(program->code_or_vm.vm);
         }
+        break;
+#else
+    case EBPF_CODE_EBPF:
         break;
 #endif
     case EBPF_CODE_NATIVE:

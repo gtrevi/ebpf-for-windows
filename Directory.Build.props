@@ -12,11 +12,6 @@
   <PropertyGroup Condition="'$(AddressSanitizer)'=='True'">
     <EnableASAN>true</EnableASAN>
   </PropertyGroup>
-  <ItemDefinitionGroup>
-    <Link>
-      <AdditionalLibraryDirectories>$(VC_LibraryPath_VC_x64_Desktop);%(Link.AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
-  </ItemDefinitionGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Fuzzer)'=='Release|True'">
     <EnableASAN>true</EnableASAN>
     <AdditionalOptions>/fsanitize-coverage=inline-bool-flag /fsanitize-coverage=edge /fsanitize-coverage=trace-cmp /fsanitize-coverage=trace-div %(AdditionalOptions)</AdditionalOptions>
@@ -47,6 +42,21 @@
     <Link>
       <CETCompat>true</CETCompat>
     </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <Link>
+      <AdditionalLibraryDirectories>$(VC_LibraryPath_VC_x64_Desktop);%(Link.AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(EnableJIT)'=='True'">
+    <ClCompile>
+        <PreprocessorDefinitions>CONFIG_BPF_JIT_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(EnableInterpreter)'=='True'">
+    <ClCompile>
+        <PreprocessorDefinitions>CONFIG_BPF_INTERPRETER_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
     <ClCompile>
