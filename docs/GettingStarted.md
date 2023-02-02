@@ -110,8 +110,8 @@ The following steps need to be executed *once* before the first build on a new c
 
 To build with specific compile time options, append `/p:DefineConstants=<option_name>`. Options available include:
 
-1. `CONFIG_BPF_JIT_ENABLED` - Compile eBPF Execution Context without support for eBPF JIT.
-1. `CONFIG_BPF_INTERPRETER_ENABLED` - Compile eBPF Execution Context without support for eBPF interpreter.
+1. `CONFIG_BPF_JIT_ENABLED` - Compile eBPF Execution Context with support for eBPF JIT.
+1. `CONFIG_BPF_INTERPRETER_ENABLED` - Compile eBPF Execution Context with support for eBPF interpreter.
 
 #### Building using Visual Studio IDE
 
@@ -126,6 +126,12 @@ To build with specific compile time options:
 1. Select the project to modify from the Solution Explorer.
 1. Navigate to "C/C++" -> "Preprocessor" -> "Preprocessor Definitions"
 1. Add the option to the list of preprocessor options.
+
+Do the above steps for the following projects within the `ebpf-for-windows.sln`:
+
+- `api_test`
+- `execution_context_kernel`
+- `sample_ext_app`
 
 Options available include:
 

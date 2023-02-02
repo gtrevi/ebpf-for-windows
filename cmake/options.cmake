@@ -3,8 +3,8 @@
 
 option(EBPFFORWINDOWS_ENABLE_TESTS "Set to true to enable tests" true)
 option(EBPFFORWINDOWS_ENABLE_INSTALL "Set to true to enable the install target")
-option(EBPFFORWINDOWS_ENABLE_JIT "Set to true to compile with JIT enabled")
-option(EBPFFORWINDOWS_ENABLE_INTERPRETER "Set to true to compile with the interpreter enabled")
+option(EBPFFORWINDOWS_ENABLE_JIT "Set to true to compile with JIT enabled" true)
+option(EBPFFORWINDOWS_ENABLE_INTERPRETER "Set to true to compile with the interpreter enabled" true)
 
 set(EBPFFORWINDOWS_CODESIGN_CERTIFICATE_PATH "" CACHE STRING "Path to the certificate used for signing")
 set(EBPFFORWINDOWS_CODESIGN_PASSWORD_ENV_VAR "" CACHE STRING "Name of the environment variable containing the certificate password")
