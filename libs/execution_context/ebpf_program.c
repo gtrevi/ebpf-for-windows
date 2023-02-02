@@ -680,6 +680,7 @@ _ebpf_program_load_machine_code(
         program->code_or_vm.code.code_pointer = local_machine_code;
         local_code_memory_descriptor = NULL;
 #else
+        UNREFERENCED_PARAMETER(machine_code_size);
         return_value = EBPF_BLOCKED_BY_POLICY;
         goto Done;
 #endif
