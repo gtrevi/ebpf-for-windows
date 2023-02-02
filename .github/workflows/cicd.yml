@@ -44,27 +44,15 @@ jobs:
       build_nuget: true
       build_options: /p:EnableJIT='True' /p:EnableInterpreter='True' /p:ReleaseJIT='True'
 
-  # Perform the regular_JIT-only build.
-  regular_JIT-only:
+  # Perform the native-only build.
+  regular_Native-only:
     # Always run this job.
     if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
     uses: ./.github/workflows/reusable-build.yml
     with:
-      build_artifact: Build-x64-JIT-only
+      build_artifact: Build-x64-native-only
       generate_release_package: true
       build_nuget: true
-      build_options: /p:EnableJIT='True' /p:ReleaseJIT='True'
-
-  # Perform the regular_Interpreter-only build.
-  regular_Interpreter-only:
-    # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
-    uses: ./.github/workflows/reusable-build.yml
-    with:
-      build_artifact: Build-x64-Interpreter-only
-      generate_release_package: true
-      build_nuget: true
-      build_options: /p:EnableInterpreter='True'
 
   cmake:
     # Always run this job.
