@@ -50,12 +50,12 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(EnableJIT)'=='True'">
     <ClCompile>
-        <PreprocessorDefinitions>CONFIG_BPF_JIT_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+        <PreprocessorDefinitions>CONFIG_BPF_JIT_ENABLED;%(ClCompile.PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(EnableInterpreter)'=='True'">
     <ClCompile>
-        <PreprocessorDefinitions>CONFIG_BPF_INTERPRETER_ENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+        <PreprocessorDefinitions>CONFIG_BPF_INTERPRETER_ENABLED;%(ClCompile.PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
