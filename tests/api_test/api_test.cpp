@@ -268,11 +268,11 @@ TEST_CASE("pinned_map_enum", "[pinned_map_enum]") { ebpf_test_pinned_map_enum();
         _test_program_load(file, program_type, execution_type, expected_result);                        \
     }
 
-// #if defined(CONFIG_BPF_JIT_DISABLED)
-// #define JIT_LOAD_RESULT -EOTHER
-// #else
+#if defined(CONFIG_BPF_JIT_DISABLED)
+#define JIT_LOAD_RESULT -EOTHER
+#else
 #define JIT_LOAD_RESULT 0
-//#endif
+#endif
 
 #if defined(CONFIG_BPF_INTERPRETER_DISABLED)
 #define INTERPRET_LOAD_RESULT -EOTHER
@@ -413,10 +413,10 @@ divide_by_zero_test_km(ebpf_execution_type_t execution_type)
     // If we don't bug-check, the test passed.
 }
 
-// #if !defined(CONFIG_BPF_JIT_DISABLED)
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("ringbuf_api_jit", "[test_ringbuf_api]") { ring_buffer_api_test(EBPF_EXECUTION_JIT); }
 TEST_CASE("divide_by_zero_jit", "[divide_by_zero]") { divide_by_zero_test_km(EBPF_EXECUTION_JIT); }
-// #endif
+#endif
 
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("ringbuf_api_interpret", "[test_ringbuf_api]") { ring_buffer_api_test(EBPF_EXECUTION_INTERPRET); }

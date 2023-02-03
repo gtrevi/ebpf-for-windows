@@ -2166,12 +2166,12 @@ ebpf_core_get_protocol_handler_properties(
     // Native is always permitted.
     bool native_permitted = true;
 
-    // #if defined(CONFIG_BPF_JIT_DISABLED)
-    //     bool jit_permitted = false;
-    // #else
+#if defined(CONFIG_BPF_JIT_DISABLED)
+    bool jit_permitted = false;
+#else
     // JIT is permitted only if HVCI is off.
     bool jit_permitted = (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_DEFAULT) ? true : false;
-    //#endif
+#endif
 
     // Interpret is only permitted if CONFIG_BPF_INTERPRETER_DISABLED is not set.
 #if defined(CONFIG_BPF_INTERPRETER_DISABLED)
