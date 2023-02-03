@@ -300,22 +300,14 @@ _ebpf_program_epoch_free(_In_ _Post_invalid_ void* context)
     ebpf_extension_unload(program->info_extension_client);
 
     switch (program->parameters.code_type) {
-#if !defined(CONFIG_BPF_JIT_DISABLED)
     case EBPF_CODE_JIT:
         ebpf_unmap_memory(program->code_or_vm.code.code_memory_descriptor);
         break;
-#else
-    case EBPF_CODE_JIT:
-        break;
-#endif
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     case EBPF_CODE_EBPF:
         if (program->code_or_vm.vm) {
             ubpf_destroy(program->code_or_vm.vm);
         }
-        break;
-#else
-    case EBPF_CODE_EBPF:
         break;
 #endif
     case EBPF_CODE_NATIVE:
@@ -651,12 +643,12 @@ _ebpf_program_load_machine_code(
 {
     EBPF_LOG_ENTRY();
     ebpf_result_t return_value;
+    uint8_t* local_machine_code = NULL;
     ebpf_memory_descriptor_t* local_code_memory_descriptor = NULL;
 
     ebpf_assert(program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE);
 
     if (program->parameters.code_type == EBPF_CODE_JIT) {
-        uint8_t* local_machine_code = NULL;
 
         program->helper_function_addresses_changed_callback = _ebpf_program_update_jit_helpers;
         program->helper_function_addresses_changed_context = program;
