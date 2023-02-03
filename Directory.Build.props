@@ -50,7 +50,6 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(DisableInterpreter)'=='Release|True'">
-  <!-- <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'"> -->
     <ClCompile>
         <PreprocessorDefinitions>CONFIG_BPF_INTERPRETER_DISABLED;%(ClCompile.PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
