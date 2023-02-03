@@ -966,21 +966,16 @@ ebpf_program_load_code(
         (code_type == EBPF_CODE_NATIVE && code_context != NULL) ||
         (code_type != EBPF_CODE_NATIVE && code_context == NULL));
 
-    switch (program->parameters.code_type) {
-    case EBPF_CODE_JIT:
-    case EBPF_CODE_NATIVE:
+    if (program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE)
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
-        break;
-
-    case EBPF_CODE_EBPF:
-#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+    else if (program->parameters.code_type == EBPF_CODE_EBPF)
+#if !defined(CONFIG_BPF_JIT_ALWAYS_ON)
         result = _ebpf_program_load_byte_code(
             program, (const ebpf_instruction_t*)code, code_size / sizeof(ebpf_instruction_t));
 #else
         result = EBPF_BLOCKED_BY_POLICY;
 #endif
-
-    default: {
+    else {
         EBPF_LOG_MESSAGE_UINT64(
             EBPF_TRACELOG_LEVEL_ERROR,
             EBPF_TRACELOG_KEYWORD_PROGRAM,
@@ -989,8 +984,8 @@ ebpf_program_load_code(
 
         result = EBPF_INVALID_ARGUMENT;
     }
-    }
-    EBPF_RETURN_RESULT(result);
+}
+EBPF_RETURN_RESULT(result);
 }
 
 typedef struct _ebpf_program_tail_call_state
