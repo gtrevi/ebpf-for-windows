@@ -109,7 +109,7 @@ sample_ebpf_ext_test(_In_ const struct bpf_object* object)
     REQUIRE(memcmp(output_buffer.data(), expected_output, strlen(expected_output)) == 0);
 }
 
-#if !defined(CONFIG_BPF_JIT_DISABLED)
+// #if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("jit_test", "[sample_ext_test]")
 {
     struct bpf_object* object = nullptr;
@@ -121,7 +121,7 @@ TEST_CASE("jit_test", "[sample_ext_test]")
 
     sample_ebpf_ext_test(object);
 }
-#endif
+// #endif
 
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("interpret_test", "[sample_ext_test]")
@@ -155,9 +155,9 @@ utility_helpers_test(ebpf_execution_type_t execution_type)
     verify_utility_helper_results(object, true);
 }
 
-#if !defined(CONFIG_BPF_JIT_DISABLED)
+// #if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("utility_helpers_test_jit", "[sample_ext_test]") { utility_helpers_test(EBPF_EXECUTION_JIT); }
-#endif
+// #endif
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("utility_helpers_test_interpret", "[sample_ext_test]") { utility_helpers_test(EBPF_EXECUTION_INTERPRET); }
 #endif
