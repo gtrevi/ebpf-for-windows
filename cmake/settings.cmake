@@ -45,15 +45,15 @@ target_link_options("ebpf_for_windows_common_settings" INTERFACE
   /DEBUG:Full
 )
 
-if(EBPFFORWINDOWS_ENABLE_JIT)
+if(EBPFFORWINDOWS_DISABLE_JIT)
   target_compile_definitions("ebpf_for_windows_common_settings" INTERFACE
-    CONFIG_BPF_JIT_ENABLED=1
+    CONFIG_BPF_JIT_DISABLED=1
   )
 endif()
 
-if(EBPFFORWINDOWS_ENABLE_INTERPRETER)
+if(EBPFFORWINDOWS_DISABLE_INTERPRETER)
   target_compile_definitions("ebpf_for_windows_common_settings" INTERFACE
-    CONFIG_BPF_INTERPRETER_ENABLED=1
+    CONFIG_BPF_INTERPRETER_DISABLED=1
   )
 endif()
 

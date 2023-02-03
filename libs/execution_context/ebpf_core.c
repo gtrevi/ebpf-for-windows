@@ -281,7 +281,6 @@ Done:
     EBPF_RETURN_RESULT(retval);
 }
 
-#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* request)
 {
@@ -300,7 +299,6 @@ _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* req
     }
 
     if (request->code_type == EBPF_CODE_JIT) {
-#if defined(CONFIG_BPF_JIT_ENABLED)
         if (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_HYPERVISOR_KERNEL_MODE) {
             retval = EBPF_BLOCKED_BY_POLICY;
             EBPF_LOG_MESSAGE(
@@ -309,12 +307,6 @@ _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* req
                 "code_type == EBPF_CODE_JIT blocked by EBPF_CODE_INTEGRITY_HYPERVISOR_KERNEL_MODE");
             goto Done;
         }
-#else
-        retval = EBPF_BLOCKED_BY_POLICY;
-        EBPF_LOG_MESSAGE(
-            EBPF_TRACELOG_LEVEL_ERROR, EBPF_TRACELOG_KEYWORD_CORE, "code_type == EBPF_CODE_JIT blocked by policy");
-        goto Done;
-#endif
     }
 
     retval = ebpf_safe_size_t_subtract(
@@ -330,7 +322,6 @@ _ebpf_core_protocol_load_code(_In_ const ebpf_operation_load_code_request_t* req
 Done:
     EBPF_RETURN_RESULT(retval);
 }
-#endif
 
 _Must_inspect_result_ ebpf_result_t
 ebpf_core_resolve_helper(
@@ -359,7 +350,6 @@ Done:
     EBPF_RETURN_RESULT(return_value);
 }
 
-#if defined(CONFIG_BPF_JIT_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_resolve_helper(
     _In_ const ebpf_operation_resolve_helper_request_t* request,
@@ -405,7 +395,6 @@ Done:
     ebpf_free(request_helper_ids);
     EBPF_RETURN_RESULT(return_value);
 }
-#endif
 
 _Must_inspect_result_ ebpf_result_t
 ebpf_core_resolve_maps(
@@ -446,7 +435,6 @@ Done:
     EBPF_RETURN_RESULT(return_value);
 }
 
-#if defined(CONFIG_BPF_JIT_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_resolve_map(
     _In_ const struct _ebpf_operation_resolve_map_request* request,
@@ -481,7 +469,6 @@ _ebpf_core_protocol_resolve_map(
 Done:
     EBPF_RETURN_RESULT(return_value);
 }
-#endif
 
 _Must_inspect_result_ ebpf_result_t
 ebpf_core_create_map(
@@ -531,7 +518,6 @@ _ebpf_core_protocol_create_map(
     EBPF_RETURN_RESULT(retval);
 }
 
-#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
 static ebpf_result_t
 _ebpf_core_protocol_create_program(
     _In_ const ebpf_operation_create_program_request_t* request, _Inout_ ebpf_operation_create_program_reply_t* reply)
@@ -574,7 +560,6 @@ _ebpf_core_protocol_create_program(
 Done:
     EBPF_RETURN_RESULT(retval);
 }
-#endif
 
 static ebpf_result_t
 _ebpf_core_protocol_load_native_module(
@@ -1293,7 +1278,6 @@ _ebpf_core_protocol_close_handle(_In_ const ebpf_operation_close_handle_request_
     EBPF_RETURN_RESULT(ebpf_handle_close(request->handle));
 }
 
-#if defined(CONFIG_BPF_JIT_ENABLED)
 static uint64_t
 _ebpf_core_protocol_get_ec_function(
     _In_ const ebpf_operation_get_ec_function_request_t* request, _Inout_ ebpf_operation_get_ec_function_reply_t* reply)
@@ -1305,7 +1289,6 @@ _ebpf_core_protocol_get_ec_function(
     reply->address = (uint64_t)ebpf_log_function;
     EBPF_RETURN_RESULT(EBPF_SUCCESS);
 }
-#endif
 
 // Get helper info for a program or program type.  This is used by the jitter/verifier,
 // not by libbpf which instead uses ebpf_program_get_info
@@ -2136,17 +2119,11 @@ ALIAS_TYPES(get_handle_by_id, get_program_handle_by_id)
 
 // #gtrevi: TBD
 static ebpf_protocol_handler_t _ebpf_protocol_handlers[] = {
-#if defined(CONFIG_BPF_JIT_ENABLED)
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_helper, helper_id, address, PROTOCOL_JIT_MODE),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_map, map_handle, address, PROTOCOL_JIT_MODE),
-#endif
-#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_FIXED_REPLY(create_program, data, PROTOCOL_JIT_OR_INTERPRET_MODE),
-#endif
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_FIXED_REPLY(create_map, data, PROTOCOL_ALL_MODES),
-#if defined(CONFIG_BPF_JIT_ENABLED) || defined(CONFIG_BPF_INTERPRETER_ENABLED)
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(load_code, code, PROTOCOL_JIT_OR_INTERPRET_MODE),
-#endif
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(map_find_element, key, value, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(map_update_element, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(map_update_element_with_handle, key, PROTOCOL_ALL_MODES),
@@ -2159,9 +2136,7 @@ static ebpf_protocol_handler_t _ebpf_protocol_handlers[] = {
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_FIXED_REPLY(link_program, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_NO_REPLY(unlink_program, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_NO_REPLY(close_handle, PROTOCOL_ALL_MODES),
-#if defined(CONFIG_BPF_JIT_ENABLED)
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_FIXED_REPLY(get_ec_function, PROTOCOL_JIT_MODE),
-#endif
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_VARIABLE_REPLY(get_program_info, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_VARIABLE_REPLY(get_pinned_map_info, data, PROTOCOL_ALL_MODES),
     DECLARE_PROTOCOL_HANDLER_FIXED_REQUEST_FIXED_REPLY(get_link_handle_by_id, PROTOCOL_ALL_MODES),
@@ -2191,15 +2166,15 @@ ebpf_core_get_protocol_handler_properties(
     // Native is always permitted.
     bool native_permitted = true;
 
-#if defined(CONFIG_BPF_JIT_ENABLED)
+#if !defined(CONFIG_BPF_JIT_DISABLED)
     // JIT is permitted only if HVCI is off.
     bool jit_permitted = (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_DEFAULT);
 #else
     bool jit_permitted = false;
 #endif
 
-    // Interpret is only permitted if CONFIG_BPF_INTERPRETER_ENABLED is not set.
-#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
+    // Interpret is only permitted if CONFIG_BPF_INTERPRETER_DISABLED is not set.
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     bool interpret_permitted = false;
 #else
     bool interpret_permitted = true;

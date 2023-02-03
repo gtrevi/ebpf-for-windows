@@ -110,8 +110,8 @@ The following steps need to be executed *once* before the first build on a new c
 
 To build with specific compile time options, append `/p:DefineConstants=<option_name>`. Options available include:
 
-1. `CONFIG_BPF_JIT_ENABLED` - Compile eBPF Execution Context with support for eBPF JIT.
-1. `CONFIG_BPF_INTERPRETER_ENABLED` - Compile eBPF Execution Context with support for eBPF interpreter.
+1. `CONFIG_BPF_JIT_DISABLED` - Compile eBPF Execution Context without support for eBPF JIT.
+1. `CONFIG_BPF_INTERPRETER_DISABLED` - Compile eBPF Execution Context without support for eBPF interpreter.
 
 #### Building using Visual Studio IDE
 
@@ -135,8 +135,8 @@ Do the above steps for the following projects within the `ebpf-for-windows.sln`:
 
 Options available include:
 
-1. `CONFIG_BPF_JIT_ENABLED` - Compile eBPF Execution Context without support for eBPF JIT.
-1. `CONFIG_BPF_INTERPRETER_ENABLED` - Compile eBPF Execution Context without support for eBPF interpreter.
+1. `CONFIG_BPF_JIT_DISABLED` - Compile eBPF Execution Context without support for eBPF JIT.
+1. `CONFIG_BPF_INTERPRETER_DISABLED` - Compile eBPF Execution Context without support for eBPF interpreter.
 
 This will build the following binaries:
 

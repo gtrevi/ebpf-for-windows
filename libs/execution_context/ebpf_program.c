@@ -300,7 +300,7 @@ _ebpf_program_epoch_free(_In_ _Post_invalid_ void* context)
     ebpf_extension_unload(program->info_extension_client);
 
     switch (program->parameters.code_type) {
-#if defined(CONFIG_BPF_JIT_ENABLED)
+#if !defined(CONFIG_BPF_JIT_DISABLED)
     case EBPF_CODE_JIT:
         ebpf_unmap_memory(program->code_or_vm.code.code_memory_descriptor);
         break;
@@ -308,7 +308,7 @@ _ebpf_program_epoch_free(_In_ _Post_invalid_ void* context)
     case EBPF_CODE_JIT:
         break;
 #endif
-#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     case EBPF_CODE_EBPF:
         if (program->code_or_vm.vm) {
             ubpf_destroy(program->code_or_vm.vm);
@@ -656,7 +656,6 @@ _ebpf_program_load_machine_code(
     ebpf_assert(program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE);
 
     if (program->parameters.code_type == EBPF_CODE_JIT) {
-#if defined(CONFIG_BPF_JIT_ENABLED)
         uint8_t* local_machine_code = NULL;
 
         program->helper_function_addresses_changed_callback = _ebpf_program_update_jit_helpers;
@@ -685,11 +684,6 @@ _ebpf_program_load_machine_code(
         program->code_or_vm.code.code_memory_descriptor = local_code_memory_descriptor;
         program->code_or_vm.code.code_pointer = local_machine_code;
         local_code_memory_descriptor = NULL;
-#else
-        UNREFERENCED_PARAMETER(machine_code_size);
-        return_value = EBPF_BLOCKED_BY_POLICY;
-        goto Done;
-#endif
     } else {
         ebpf_assert(machine_code_size == 0);
         if (code_context == NULL) {
@@ -744,7 +738,7 @@ _ebpf_program_update_interpret_helpers(_Inout_ ebpf_program_t* program, _Inout_ 
         if (helper == NULL)
             continue;
 
-#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
         if (ubpf_register(program->code_or_vm.vm, (unsigned int)index, NULL, (void*)helper) < 0) {
             EBPF_LOG_MESSAGE_UINT64(
                 EBPF_TRACELOG_LEVEL_ERROR, EBPF_TRACELOG_KEYWORD_PROGRAM, "ubpf_register failed", index);
@@ -895,7 +889,7 @@ Exit:
     return return_value;
 }
 
-#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static ebpf_result_t
 _ebpf_program_load_byte_code(
     _Inout_ ebpf_program_t* program, _In_ const ebpf_instruction_t* instructions, size_t instruction_count)
@@ -985,24 +979,17 @@ ebpf_program_load_code(
     switch (program->parameters.code_type) {
 
     case EBPF_CODE_JIT:
-#if defined(CONFIG_BPF_JIT_ENABLED)
+    case EBPF_CODE_NATIVE:
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
-#else
-        result = EBPF_BLOCKED_BY_POLICY;
-#endif
         break;
 
     case EBPF_CODE_EBPF:
-#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
         result = _ebpf_program_load_byte_code(
             program, (const ebpf_instruction_t*)code, code_size / sizeof(ebpf_instruction_t));
 #else
         result = EBPF_BLOCKED_BY_POLICY;
 #endif
-
-    case EBPF_CODE_NATIVE:
-        result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
-        break;
 
     default: {
         EBPF_LOG_MESSAGE_UINT64(
@@ -1073,20 +1060,13 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
 
     for (state.count = 0; state.count < MAX_TAIL_CALL_CNT; state.count++) {
 
-        if (current_program->parameters.code_type == EBPF_CODE_JIT) {
-#if defined(CONFIG_BPF_JIT_ENABLED)
-            ebpf_program_entry_point_t function_pointer;
-            function_pointer = (ebpf_program_entry_point_t)(current_program->code_or_vm.code.code_pointer);
-            *result = (function_pointer)(context);
-#else
-            *result = 0;
-#endif
-        } else if (current_program->parameters.code_type == EBPF_CODE_NATIVE) {
+        if (current_program->parameters.code_type == EBPF_CODE_JIT ||
+            current_program->parameters.code_type == EBPF_CODE_NATIVE) {
             ebpf_program_entry_point_t function_pointer;
             function_pointer = (ebpf_program_entry_point_t)(current_program->code_or_vm.code.code_pointer);
             *result = (function_pointer)(context);
         } else {
-#if defined(CONFIG_BPF_INTERPRETER_ENABLED)
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
             uint64_t out_value;
             int ret = (uint32_t)(ubpf_exec(current_program->code_or_vm.vm, context, 1024, &out_value));
             if (ret < 0) {
