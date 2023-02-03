@@ -984,8 +984,7 @@ ebpf_program_load_code(
 
         result = EBPF_INVALID_ARGUMENT;
     }
-}
-EBPF_RETURN_RESULT(result);
+    EBPF_RETURN_RESULT(result);
 }
 
 typedef struct _ebpf_program_tail_call_state
