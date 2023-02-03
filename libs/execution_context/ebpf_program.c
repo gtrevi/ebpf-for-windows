@@ -649,7 +649,6 @@ _ebpf_program_load_machine_code(
     ebpf_assert(program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE);
 
     if (program->parameters.code_type == EBPF_CODE_JIT) {
-
         program->helper_function_addresses_changed_callback = _ebpf_program_update_jit_helpers;
         program->helper_function_addresses_changed_context = program;
         return_value = _ebpf_program_update_helpers(program);
@@ -968,7 +967,6 @@ ebpf_program_load_code(
         (code_type != EBPF_CODE_NATIVE && code_context == NULL));
 
     switch (program->parameters.code_type) {
-
     case EBPF_CODE_JIT:
     case EBPF_CODE_NATIVE:
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);

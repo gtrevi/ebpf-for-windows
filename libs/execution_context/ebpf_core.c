@@ -2173,7 +2173,7 @@ ebpf_core_get_protocol_handler_properties(
 #endif
 
     // Interpret is only permitted if CONFIG_BPF_INTERPRETER_DISABLED is not set.
-#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#if defined(CONFIG_BPF_INTERPRETER_DISABLED)
     bool interpret_permitted = false;
 #else
     bool interpret_permitted = true;
