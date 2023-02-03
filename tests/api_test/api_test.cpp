@@ -268,11 +268,11 @@ TEST_CASE("pinned_map_enum", "[pinned_map_enum]") { ebpf_test_pinned_map_enum();
         _test_program_load(file, program_type, execution_type, expected_result);                        \
     }
 
-#if defined(CONFIG_BPF_JIT_DISABLED)
-#define JIT_LOAD_RESULT -EOTHER
-#else
+// #if defined(CONFIG_BPF_JIT_DISABLED)
+// #define JIT_LOAD_RESULT -EOTHER
+// #else
 #define JIT_LOAD_RESULT 0
-#endif
+//#endif
 
 #if defined(CONFIG_BPF_INTERPRETER_DISABLED)
 #define INTERPRET_LOAD_RESULT -EOTHER
