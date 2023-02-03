@@ -2118,6 +2118,7 @@ ALIAS_TYPES(get_handle_by_id, get_map_handle_by_id)
 ALIAS_TYPES(get_handle_by_id, get_program_handle_by_id)
 
 static ebpf_protocol_handler_t _ebpf_protocol_handlers[] = {
+
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_helper, helper_id, address, PROTOCOL_JIT_MODE),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_map, map_handle, address, PROTOCOL_JIT_MODE),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_FIXED_REPLY(create_program, data, PROTOCOL_JIT_OR_INTERPRET_MODE),
@@ -2167,7 +2168,7 @@ ebpf_core_get_protocol_handler_properties(
 
 #if !defined(CONFIG_BPF_JIT_DISABLED)
     // JIT is permitted only if HVCI is off.
-    bool jit_permitted = (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_DEFAULT);
+    bool jit_permitted = (_ebpf_core_code_integrity_state == EBPF_CODE_INTEGRITY_DEFAULT) ? true : false;
 #else
     bool jit_permitted = false;
 #endif
