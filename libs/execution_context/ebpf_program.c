@@ -969,11 +969,8 @@ ebpf_program_load_code(
     switch (program->parameters.code_type) {
 
     case EBPF_CODE_JIT:
-#if !defined(CONFIG_BPF_JIT_DISABLED)
+    case EBPF_CODE_NATIVE:
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
-#else
-        result = EBPF_BLOCKED_BY_POLICY;
-#endif
         break;
 
     case EBPF_CODE_EBPF:
@@ -983,10 +980,6 @@ ebpf_program_load_code(
 #else
         result = EBPF_BLOCKED_BY_POLICY;
 #endif
-
-    case EBPF_CODE_NATIVE:
-        result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
-        break;
 
     default: {
         EBPF_LOG_MESSAGE_UINT64(
