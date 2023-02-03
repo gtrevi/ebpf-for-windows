@@ -752,7 +752,6 @@ Exit:
     EBPF_RETURN_RESULT(result);
 }
 
-//#gtrevi: TBD
 static ebpf_result_t
 _ebpf_program_update_jit_helpers(_Inout_ ebpf_program_t* program, _Inout_ void* context)
 {

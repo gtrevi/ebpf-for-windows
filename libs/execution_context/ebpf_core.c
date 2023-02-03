@@ -2117,7 +2117,6 @@ ALIAS_TYPES(get_handle_by_id, get_link_handle_by_id)
 ALIAS_TYPES(get_handle_by_id, get_map_handle_by_id)
 ALIAS_TYPES(get_handle_by_id, get_program_handle_by_id)
 
-// #gtrevi: TBD
 static ebpf_protocol_handler_t _ebpf_protocol_handlers[] = {
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_helper, helper_id, address, PROTOCOL_JIT_MODE),
     DECLARE_PROTOCOL_HANDLER_VARIABLE_REQUEST_VARIABLE_REPLY(resolve_map, map_handle, address, PROTOCOL_JIT_MODE),
