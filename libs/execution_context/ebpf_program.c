@@ -969,7 +969,7 @@ ebpf_program_load_code(
     if (program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE)
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
     else if (program->parameters.code_type == EBPF_CODE_EBPF)
-#if !defined(CONFIG_BPF_JIT_ALWAYS_ON)
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
         result = _ebpf_program_load_byte_code(
             program, (const ebpf_instruction_t*)code, code_size / sizeof(ebpf_instruction_t));
 #else
