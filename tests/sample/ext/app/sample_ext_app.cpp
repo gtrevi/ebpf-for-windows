@@ -155,12 +155,12 @@ utility_helpers_test(ebpf_execution_type_t execution_type)
     verify_utility_helper_results(object, true);
 }
 
-// #if !defined(CONFIG_BPF_JIT_DISABLED)
-TEST_CASE("utility_helpers_test_jit", "[sample_ext_test]") { utility_helpers_test(EBPF_EXECUTION_JIT); }
-// #endif
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("utility_helpers_test_interpret", "[sample_ext_test]") { utility_helpers_test(EBPF_EXECUTION_INTERPRET); }
 #endif
+// #if !defined(CONFIG_BPF_JIT_DISABLED)
+TEST_CASE("utility_helpers_test_jit", "[sample_ext_test]") { utility_helpers_test(EBPF_EXECUTION_JIT); }
+// #endif
 TEST_CASE("utility_helpers_test_native", "[sample_ext_test]") { utility_helpers_test(EBPF_EXECUTION_NATIVE); }
 TEST_CASE("netsh_add_program_test_sample_ebpf", "[sample_ext_test]")
 {
