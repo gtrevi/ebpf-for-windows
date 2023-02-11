@@ -294,9 +294,13 @@ _ebpf_program_epoch_free(_In_ _Post_invalid_ void* context)
     ebpf_extension_unload(program->info_extension_client);
 
     switch (program->parameters.code_type) {
+
+#if !defined(CONFIG_BPF_JIT_DISABLED)
     case EBPF_CODE_JIT:
         ebpf_unmap_memory(program->code_or_vm.code.code_memory_descriptor);
         break;
+#endif
+
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     case EBPF_CODE_EBPF:
         if (program->code_or_vm.vm) {
@@ -304,9 +308,11 @@ _ebpf_program_epoch_free(_In_ _Post_invalid_ void* context)
         }
         break;
 #endif
+
     case EBPF_CODE_NATIVE:
         ebpf_native_release_reference((ebpf_native_module_binding_context_t*)program->code_or_vm.native.module);
         break;
+
     case EBPF_CODE_NONE:
         break;
     }
@@ -640,9 +646,19 @@ _ebpf_program_load_machine_code(
     uint8_t* local_machine_code = NULL;
     ebpf_memory_descriptor_t* local_code_memory_descriptor = NULL;
 
+#if defined(CONFIG_BPF_JIT_DISABLED)
+    ebpf_assert(program->parameters.code_type == EBPF_CODE_NATIVE);
+#else
     ebpf_assert(program->parameters.code_type == EBPF_CODE_JIT || program->parameters.code_type == EBPF_CODE_NATIVE);
+#endif
 
-    if (program->parameters.code_type == EBPF_CODE_JIT) {
+    switch (program->parameters.code_type) {
+
+    case EBPF_CODE_JIT:
+#if defined(CONFIG_BPF_JIT_DISABLED)
+        return_value = EBPF_BLOCKED_BY_POLICY;
+        goto Done;
+#else
         program->helper_function_addresses_changed_callback = _ebpf_program_update_jit_helpers;
         program->helper_function_addresses_changed_context = program;
         return_value = _ebpf_program_update_helpers(program);
@@ -669,7 +685,15 @@ _ebpf_program_load_machine_code(
         program->code_or_vm.code.code_memory_descriptor = local_code_memory_descriptor;
         program->code_or_vm.code.code_pointer = local_machine_code;
         local_code_memory_descriptor = NULL;
-    } else {
+        break;
+#endif
+
+    case EBPF_CODE_EBPF:
+#if defined(CONFIG_BPF_JIT_DISABLED)
+        return_value = EBPF_BLOCKED_BY_POLICY;
+        goto Done;
+#endif
+    case EBPF_CODE_NATIVE:
         ebpf_assert(machine_code_size == 0);
         if (code_context == NULL) {
             return_value = EBPF_INVALID_ARGUMENT;
@@ -681,6 +705,11 @@ _ebpf_program_load_machine_code(
         // Acquire reference on the native module. This reference
         // will be released when the ebpf_program is freed.
         ebpf_native_acquire_reference((ebpf_native_module_binding_context_t*)code_context);
+        break;
+
+    default:
+        return_value = EBPF_INVALID_ARGUMENT;
+        goto Done;
     }
 
     return_value = EBPF_SUCCESS;
@@ -962,7 +991,13 @@ ebpf_program_load_code(
 
     switch (program->parameters.code_type) {
 
+#if defined(CONFIG_BPF_JIT_DISABLED)
     case EBPF_CODE_JIT:
+        result = EBPF_BLOCKED_BY_POLICY;
+        break;
+#else
+    case EBPF_CODE_JIT:
+#endif
     case EBPF_CODE_NATIVE:
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
         break;
@@ -1046,12 +1081,22 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
 
     for (state.count = 0; state.count < MAX_TAIL_CALL_CNT; state.count++) {
 
-        if (current_program->parameters.code_type == EBPF_CODE_JIT ||
-            current_program->parameters.code_type == EBPF_CODE_NATIVE) {
+        switch (program->parameters.code_type) {
+
+#if defined(CONFIG_BPF_JIT_DISABLED)
+        case EBPF_CODE_JIT:
+            *result = 0;
+            break;
+#else
+        case EBPF_CODE_JIT:
+#endif
+        case EBPF_CODE_NATIVE:
             ebpf_program_entry_point_t function_pointer;
             function_pointer = (ebpf_program_entry_point_t)(current_program->code_or_vm.code.code_pointer);
             *result = (function_pointer)(context);
-        } else {
+            break;
+
+        case EBPF_CODE_EBPF:
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
             uint64_t out_value;
             int ret = (uint32_t)(ubpf_exec(current_program->code_or_vm.vm, context, 1024, &out_value));
@@ -1063,6 +1108,7 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
 #else
             *result = 0;
 #endif
+            break;
         }
 
         if (state.count != 0) {

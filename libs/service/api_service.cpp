@@ -353,8 +353,11 @@ ebpf_verify_and_load_program(
 
         memcpy(request->code, byte_code_data, byte_code_size);
 
+        //#gtrevi
+        // if (execution_type == EBPF_EXECUTION_JIT)
+        //#if defined(CONFIG_BPF_INTERPRETER_DISABLED)
         error = invoke_ioctl(request_buffer);
-
+        //#endif
         if (error != ERROR_SUCCESS) {
             result = EBPF_PROGRAM_LOAD_FAILED;
             goto Exit;
