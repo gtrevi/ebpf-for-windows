@@ -791,7 +791,9 @@ bpf_user_helpers_test(ebpf_execution_type_t execution_type)
     LsaFreeReturnBuffer(data);
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("bpf_user_helpers_test_jit", "[api_test]") { bpf_user_helpers_test(EBPF_EXECUTION_JIT); }
+#endif
 TEST_CASE("bpf_user_helpers_test_native", "[api_test]") { bpf_user_helpers_test(EBPF_EXECUTION_NATIVE); }
 
 // This test tests resource reclamation and clean-up after a premature/abnormal user mode application exit.

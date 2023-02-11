@@ -303,6 +303,7 @@ ebpf_verify_and_load_program(
         size_t byte_code_size = instruction_count * sizeof(*instructions);
 
         if (execution_type == EBPF_EXECUTION_JIT) {
+#if !defined(CONFIG_BPF_JIT_DISABLED)
             size_t machine_code_size = machine_code.size();
 
             // JIT code.
@@ -319,8 +320,9 @@ ebpf_verify_and_load_program(
                 }
             }
 
-            if (unwind_index != MAXUINT32)
+            if (unwind_index != MAXUINT32) {
                 ubpf_set_unwind_function_index(vm, unwind_index);
+            }
 
             ubpf_set_error_print(
                 vm, reinterpret_cast<int (*)(FILE * stream, const char* format, ...)>(log_function_address));
@@ -335,6 +337,7 @@ ebpf_verify_and_load_program(
                 result = EBPF_JIT_COMPILATION_FAILED;
                 goto Exit;
             }
+
             machine_code.resize(machine_code_size);
             byte_code_data = machine_code.data();
             byte_code_size = machine_code.size();
@@ -342,6 +345,10 @@ ebpf_verify_and_load_program(
             if (*error_message != nullptr) {
                 *error_message_size = (uint32_t)strlen(*error_message);
             }
+#else
+            result = EBPF_BLOCKED_BY_POLICY;
+            goto Exit;
+#endif
         }
 
         request_buffer.resize(offsetof(ebpf_operation_load_code_request_t, code) + byte_code_size);
@@ -353,11 +360,7 @@ ebpf_verify_and_load_program(
 
         memcpy(request->code, byte_code_data, byte_code_size);
 
-        //#gtrevi
-        // if (execution_type == EBPF_EXECUTION_JIT)
-        //#if defined(CONFIG_BPF_INTERPRETER_DISABLED)
         error = invoke_ioctl(request_buffer);
-        //#endif
         if (error != ERROR_SUCCESS) {
             result = EBPF_PROGRAM_LOAD_FAILED;
             goto Exit;

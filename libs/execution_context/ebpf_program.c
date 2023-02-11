@@ -766,6 +766,7 @@ Exit:
     EBPF_RETURN_RESULT(result);
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 static ebpf_result_t
 _ebpf_program_update_jit_helpers(_Inout_ ebpf_program_t* program, _Inout_ void* context)
 {
@@ -901,6 +902,7 @@ Exit:
 
     return return_value;
 }
+#endif
 
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static ebpf_result_t
