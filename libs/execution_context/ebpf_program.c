@@ -643,8 +643,6 @@ _ebpf_program_load_machine_code(
 {
     EBPF_LOG_ENTRY();
     ebpf_result_t return_value;
-    uint8_t* local_machine_code = NULL;
-    ebpf_memory_descriptor_t* local_code_memory_descriptor = NULL;
 
 #if defined(CONFIG_BPF_JIT_DISABLED)
     ebpf_assert(program->parameters.code_type == EBPF_CODE_NATIVE);
@@ -659,6 +657,9 @@ _ebpf_program_load_machine_code(
         return_value = EBPF_BLOCKED_BY_POLICY;
         goto Done;
 #else
+        uint8_t* local_machine_code = NULL;
+        ebpf_memory_descriptor_t* local_code_memory_descriptor = NULL;
+
         program->helper_function_addresses_changed_callback = _ebpf_program_update_jit_helpers;
         program->helper_function_addresses_changed_context = program;
         return_value = _ebpf_program_update_helpers(program);
