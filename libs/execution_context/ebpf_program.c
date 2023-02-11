@@ -1067,8 +1067,9 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
     bool provider_data_referenced = false;
     bool program_state_stored = false;
 
+    *result = NULL;
+
     if (!program->info_extension_client || !ebpf_extension_reference_provider_data(program->info_extension_client)) {
-        *result = 0;
         return;
     }
 
@@ -1076,7 +1077,6 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
 
     state.context = context;
     if (!ebpf_state_store(_ebpf_program_state_index, (uintptr_t)&state) == EBPF_SUCCESS) {
-        *result = 0;
         goto Done;
     }
 
@@ -1088,7 +1088,7 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
 
 #if defined(CONFIG_BPF_JIT_DISABLED)
         case EBPF_CODE_JIT:
-            *result = 0;
+            *result = NULL;
             break;
 #else
         case EBPF_CODE_JIT:
@@ -1109,7 +1109,7 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
                 *result = (uint32_t)(out_value);
             }
 #else
-            *result = 0;
+            *result = NULL;
 #endif
             break;
         }
