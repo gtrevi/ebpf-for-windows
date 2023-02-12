@@ -45,11 +45,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(DisableJIT)'=='Release|True'">
+  <!-- <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'"> -->
     <ClCompile>
         <PreprocessorDefinitions>CONFIG_BPF_JIT_DISABLED;%(ClCompile.PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(DisableInterpreter)'=='Release|True'">
+  <!-- <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'"> -->
     <ClCompile>
         <PreprocessorDefinitions>CONFIG_BPF_INTERPRETER_DISABLED;%(ClCompile.PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>

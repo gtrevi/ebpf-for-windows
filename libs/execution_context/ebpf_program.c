@@ -1067,7 +1067,7 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
     bool provider_data_referenced = false;
     bool program_state_stored = false;
 
-    *result = NULL;
+    *result = 0;
 
     if (!program->info_extension_client || !ebpf_extension_reference_provider_data(program->info_extension_client)) {
         return;
@@ -1088,7 +1088,7 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
 
 #if defined(CONFIG_BPF_JIT_DISABLED)
         case EBPF_CODE_JIT:
-            *result = NULL;
+            *result = 0;
             break;
 #else
         case EBPF_CODE_JIT:
@@ -1109,7 +1109,7 @@ ebpf_program_invoke(_In_ const ebpf_program_t* program, _Inout_ void* context, _
                 *result = (uint32_t)(out_value);
             }
 #else
-            *result = NULL;
+            *result = 0;
 #endif
             break;
         }
