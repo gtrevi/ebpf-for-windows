@@ -707,10 +707,6 @@ _ebpf_program_load_machine_code(
         // will be released when the ebpf_program is freed.
         ebpf_native_acquire_reference((ebpf_native_module_binding_context_t*)code_context);
         break;
-
-    default:
-        return_value = EBPF_INVALID_ARGUMENT;
-        goto Done;
     }
 
     return_value = EBPF_SUCCESS;
