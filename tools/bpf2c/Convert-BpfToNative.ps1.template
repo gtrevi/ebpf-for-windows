@@ -23,7 +23,7 @@ if ($ProgramName.EndsWith(".o")) {
 
 # SkipVerification is only supported for Debug.
 if ($Configuration -eq "Release" -and $SkipVerification) {
-	throw "Invalid parameter. SkipVerification is only supported for Debug builds"
+    throw "Invalid parameter. SkipVerification is only supported for Debug builds"
 }
 
 if ($null -eq (Get-Command 'msbuild.exe' -ErrorAction SilentlyContinue)) {

@@ -82,8 +82,8 @@
   <ItemGroup>
     <ClInclude Include="ebpf.h" />
   </ItemGroup>
-  <!-- Build BPF programs that pass verification and build native images for them. -->
   <ItemGroup Condition="'$(Analysis)'==''">
+    <!-- Build BPF programs that pass verification and build native images for them. -->
     <CustomBuild Include="*.c">
       <FileType>CppCode</FileType>
       <Command>
@@ -97,9 +97,7 @@
       <!-- Don't run bpf2c in parallel when built with fuzzing flags as this triggers failures. -->
       <BuildInParallel Condition="'$(Fuzzer)'!='True' And '$(AddressSanitizer)'!='True'">true</BuildInParallel>
     </CustomBuild>
-  </ItemGroup>
-  <ItemGroup>
-    <!-- For explicit unsafe object files without a corresponding .c file, just move them with the other generated .o files -->
+    <!-- For explicit unsafe object files without a corresponding .c file, just copy them with the other generated .o files -->
     <CustomBuild Include="unsafe\*.o">
       <FileType>Document</FileType>
       <Command>
