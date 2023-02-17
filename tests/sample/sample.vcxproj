@@ -98,6 +98,17 @@
       <BuildInParallel Condition="'$(Fuzzer)'!='True' And '$(AddressSanitizer)'!='True'">true</BuildInParallel>
     </CustomBuild>
   </ItemGroup>
+  <ItemGroup>
+    <!-- For explicit unsafe object files without a corresponding .c file, just move them with the other generated .o files -->
+    <CustomBuild Include="unsafe\*.o">
+      <FileType>Document</FileType>
+      <Command>
+        xcopy unsafe\%(Filename).o $(OutDir) /Y
+      </Command>
+      <Outputs>$(OutputPath)%(Filename).o</Outputs>
+      <BuildInParallel>true</BuildInParallel>
+    </CustomBuild>
+  </ItemGroup>
   <!-- For BPF programs that fail verification, build native images without verification only for Debug build. -->
   <ItemGroup Condition="'$(Configuration)'=='Debug'">
     <CustomBuild Include="unsafe\*.c">
@@ -114,14 +125,6 @@
       <!-- Don't run bpf2c in parallel when built with fuzzing flags as this triggers failures. -->
       <BuildInParallel Condition="'$(Fuzzer)'!='True' And '$(AddressSanitizer)'!='True'">true</BuildInParallel>
     </CustomBuild>
-    <CustomBuild Include="unsafe\*.o">
-      <FileType>Document</FileType>
-      <Command>
-        xcopy unsafe\%(Filename).o $(OutDir) /Y
-      </Command>
-      <Outputs>$(OutputPath)%(Filename).o</Outputs>
-      <BuildInParallel>true</BuildInParallel>
-    </CustomBuild>
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)'=='Release'">
     <CustomBuild Include="unsafe\*.c">
@@ -129,14 +132,6 @@
       <Command>clang $(ClangFlags) -c %(Filename).c -o $(OutputPath)%(Filename).o</Command>
       <Command>
         clang $(ClangFlags) -I../xdp -I../socket -I./ext/inc -c unsafe\%(Filename).c -o $(OutputPath)%(Filename).o
-      </Command>
-      <Outputs>$(OutputPath)%(Filename).o</Outputs>
-      <BuildInParallel>true</BuildInParallel>
-    </CustomBuild>
-    <CustomBuild Include="unsafe\*.o">
-      <FileType>Document</FileType>
-      <Command>
-        xcopy unsafe\%(Filename).o $(OutDir) /Y
       </Command>
       <Outputs>$(OutputPath)%(Filename).o</Outputs>
       <BuildInParallel>true</BuildInParallel>
