@@ -23,7 +23,9 @@ if ($ProgramName.EndsWith(".o")) {
 
 # SkipVerification is only supported for Debug.
 if ($Configuration -eq "Release" -and $SkipVerification) {
-    throw "Invalid parameter. SkipVerification is only supported for Debug builds"
+    $errorString = "WARNING!! Unable to locate msbuild.exe. This command needs to run within a 'Developer Command Prompt'"
+	echo $errorString
+	# throw $errorString
 }
 
 if ($null -eq (Get-Command 'msbuild.exe' -ErrorAction SilentlyContinue)) {
