@@ -114,6 +114,14 @@
       <!-- Don't run bpf2c in parallel when built with fuzzing flags as this triggers failures. -->
       <BuildInParallel Condition="'$(Fuzzer)'!='True' And '$(AddressSanitizer)'!='True'">true</BuildInParallel>
     </CustomBuild>
+    <CustomBuild Include="unsafe\*.o">
+      <FileType>Document</FileType>
+      <Command>
+        xcopy unsafe\%(Filename).o $(OutDir) /Y
+      </Command>
+      <Outputs>$(OutputPath)%(Filename).o</Outputs>
+      <BuildInParallel>true</BuildInParallel>
+    </CustomBuild>
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)'=='Release'">
     <CustomBuild Include="unsafe\*.c">
@@ -128,7 +136,7 @@
     <CustomBuild Include="unsafe\*.o">
       <FileType>Document</FileType>
       <Command>
-        xcopy unsafe\atomic_instruction_others.o $(OutDir) /Y
+        xcopy unsafe\%(Filename).o $(OutDir) /Y
       </Command>
       <Outputs>$(OutputPath)%(Filename).o</Outputs>
       <BuildInParallel>true</BuildInParallel>
