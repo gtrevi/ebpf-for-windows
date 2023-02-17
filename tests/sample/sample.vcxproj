@@ -128,7 +128,7 @@
     <CustomBuild Include="unsafe\*.o">
       <FileType>Document</FileType>
       <Command>
-        xcopy atomic_instruction_others.o $(OutDir) /Y
+        xcopy unsafe\atomic_instruction_others.o $(OutDir) /Y
       </Command>
       <Outputs>$(OutputPath)%(Filename).o</Outputs>
       <BuildInParallel>true</BuildInParallel>
