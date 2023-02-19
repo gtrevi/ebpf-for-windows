@@ -40,7 +40,7 @@ set(platform_user_sources
   ebpf_serialize.c
   ebpf_trampoline.c
 
-  registry_helper.c
+  registry_helper_km.c
 )
 
 set(platform_kernel_include_dirs
