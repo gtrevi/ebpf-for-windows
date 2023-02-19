@@ -39,6 +39,8 @@ set(platform_user_sources
   ebpf_interlocked.c
   ebpf_serialize.c
   ebpf_trampoline.c
+
+  registry_helper.c
 )
 
 set(platform_kernel_include_dirs
