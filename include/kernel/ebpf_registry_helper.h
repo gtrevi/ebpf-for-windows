@@ -23,10 +23,12 @@ void
 close_registry_key(ebpf_registry_key_t key);
 
 // Dummy prototypes for building when including ebpf_store_helper.h in kernel mode.
-_Success_(return == ERROR_SUCCESS) uint32_t open_registry_key(
+_Success_(return == 0) uint32_t open_registry_key(
     ebpf_registry_key_t root_key, _In_opt_z_ const wchar_t* sub_key, uint32_t flags, _Out_ ebpf_registry_key_t* key);
+
 _Must_inspect_result_ ebpf_registry_result_t
 delete_registry_key(ebpf_registry_key_t root_key, _In_z_ const wchar_t* sub_key);
+
 _Must_inspect_result_ ebpf_registry_result_t
 delete_registry_tree(ebpf_registry_key_t root_key, _In_opt_z_ const wchar_t* sub_key);
 
