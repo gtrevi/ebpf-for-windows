@@ -22,15 +22,16 @@ _Success_(return == 0) NTSTATUS
 void
 close_registry_key(ebpf_registry_key_t key);
 
-// Dummy prototypes for building when including ebpf_store_helper.h in kernel mode.
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mocks for building platform_kernel & netebpfext when including the common ebpf_store_helper.h in kernel mode.
+// Currently these prototypes only need implementations in user mode, as they are not referenced in kernel mode.
 _Success_(return == 0) uint32_t open_registry_key(
     ebpf_registry_key_t root_key, _In_opt_z_ const wchar_t* sub_key, uint32_t flags, _Out_ ebpf_registry_key_t* key);
-
 _Must_inspect_result_ ebpf_registry_result_t
 delete_registry_key(ebpf_registry_key_t root_key, _In_z_ const wchar_t* sub_key);
-
 _Must_inspect_result_ ebpf_registry_result_t
 delete_registry_tree(ebpf_registry_key_t root_key, _In_opt_z_ const wchar_t* sub_key);
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 _Must_inspect_result_ ebpf_registry_result_t
 write_registry_value_binary(
@@ -41,6 +42,7 @@ write_registry_value_binary(
 
 _Must_inspect_result_ ebpf_registry_result_t
 write_registry_value_ansi_string(ebpf_registry_key_t key, _In_z_ const wchar_t* value_name, _In_z_ const char* value);
+
 _Must_inspect_result_ ebpf_registry_result_t
 write_registry_value_dword(ebpf_registry_key_t key, _In_z_ const wchar_t* value_name, uint32_t value);
 
