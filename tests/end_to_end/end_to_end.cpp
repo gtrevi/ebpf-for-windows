@@ -2514,6 +2514,10 @@ TEST_CASE("load_native_program_negative7", "[end-to-end]")
     std::wstring service_path(SERVICE_PATH_PREFIX);
     ebpf_handle_t map_handles;
     ebpf_handle_t program_handles;
+    _test_handle_helper module_handle;
+    size_t count_of_maps = 0;
+    size_t count_of_programs = 0;
+    set_native_module_failures(true);
 
     REQUIRE(UuidCreate(&provider_module_id) == RPC_S_OK);
 
