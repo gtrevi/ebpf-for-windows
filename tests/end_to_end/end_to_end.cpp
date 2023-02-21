@@ -2534,6 +2534,8 @@ TEST_CASE("load_native_program_negative7", "[end-to-end]")
             &count_of_maps,
             &count_of_programs) == ERROR_OUTOFMEMORY);
 
+    set_native_module_failures(true);
+
     // Try to load the programs from the module with 0 programs.
     REQUIRE(
         test_ioctl_load_native_programs(&provider_module_id, nullptr, 1, &map_handles, 1, &program_handles) !=
