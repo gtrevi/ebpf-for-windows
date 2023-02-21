@@ -2511,6 +2511,7 @@ TEST_CASE("load_native_program_negative7", "[end-to-end]")
 
     GUID provider_module_id = GUID_NULL;
     SC_HANDLE service_handle = nullptr;
+    std::wstring service_path(SERVICE_PATH_PREFIX);
     ebpf_handle_t map_handles;
     ebpf_handle_t program_handles;
 
