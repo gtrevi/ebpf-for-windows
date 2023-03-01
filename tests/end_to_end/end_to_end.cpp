@@ -484,6 +484,106 @@ droppacket_test(ebpf_execution_type_t execution_type)
     bpf_object__close(object);
 }
 
+void
+native_load_stress_thread_function(
+    std::stop_token token,
+    _In_ const std::string& file_name,
+    _In_ const std::string map_name,
+    _In_ const std::string interface_name,
+    ebpf_program_type_t prog_type,
+    ebpf_attach_type_t attach_type)
+{
+    while (!token.stop_requested()) {
+
+        int result;
+        _test_helper_end_to_end test_helper;
+        const char* error_message = nullptr;
+        bpf_object* object = nullptr;
+        fd_t program_fd;
+        bpf_link* link;
+
+        single_instance_hook_t hook(prog_type, attach_type);
+        program_info_provider_t xdp_program_info(prog_type);
+
+        // Load the program
+        result = ebpf_program_load(
+            file_name.c_str(), BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, &object, &program_fd, &error_message);
+        if (error_message) {
+            printf("ebpf_program_load failed to load %s with %s\n", file_name.c_str(), error_message);
+            ebpf_free((void*)error_message);
+        }
+        REQUIRE(result == 0);
+
+        // Once loaded, we do the least amout of activity in order to maximise the jitter
+        fd_t dropped_packet_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
+
+        // Tell the program which interface to filter on.
+        fd_t interface_index_map_fd = bpf_object__find_map_fd_by_name(object, interface_name.c_str());
+        uint32_t key = 0;
+        uint32_t if_index = TEST_IFINDEX;
+        REQUIRE(bpf_map_update_elem(interface_index_map_fd, &key, &if_index, EBPF_ANY) == EBPF_SUCCESS);
+
+        // Attach only to the single interface being tested.
+        REQUIRE(hook.attach_link(program_fd, &if_index, sizeof(if_index), &link) == EBPF_SUCCESS);
+
+        hook.detach_link(link);
+        hook.close_link(link);
+
+        bpf_object__close(object);
+    }
+}
+
+TEST_CASE("native_load_concurrent", "[end_to_end]")
+{
+    typedef struct
+    {
+        std::string file_name;
+        std::string map_name;
+        std::string interface_name;
+        ebpf_program_type_t prog_type;
+        ebpf_attach_type_t attach_type;
+
+    } native_module_data_t;
+    ebpf_extension_data_t npi_specific_characteristics = {};
+    std::vector<std::jthread> threads;
+    const int CONCURRENT_THREAD_RUN_TIME_IN_SECONDS = 10;
+    std::vector<native_module_data_t> native_modues{
+        {"droppacket_um.dll",
+         "dropped_packet_map",
+         "interface_index_map",
+         EBPF_PROGRAM_TYPE_XDP,
+         EBPF_ATTACH_TYPE_XDP}};
+
+    // Test all the defined native module (simulated in usermode)
+    for (auto module : native_modues) {
+
+        // Attempt to saturate all core threads
+        uint32_t thread_count = 2 * ebpf_get_cpu_count();
+        for (uint32_t i = 0; i < thread_count; i++) {
+            threads.emplace_back(
+                native_load_stress_thread_function,
+                &module.file_name,
+                &module.map_name,
+                &module.map_name,
+                module.map_name,
+                module.attach_type);
+        }
+
+        // Wait for the defined running time.
+        std::this_thread::sleep_for(std::chrono::seconds(CONCURRENT_THREAD_RUN_TIME_IN_SECONDS));
+
+        // Stop all threads.
+        for (auto& thread : threads) {
+            thread.request_stop();
+        }
+
+        // Wait for all threads to stop.
+        for (auto& thread : threads) {
+            thread.join();
+        }
+    }
+}
+
 // See also divide_by_zero_test_km in api_test.cpp for the kernel-mode equivalent.
 void
 divide_by_zero_test_um(ebpf_execution_type_t execution_type)
