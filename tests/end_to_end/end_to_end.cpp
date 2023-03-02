@@ -493,6 +493,8 @@ native_load_stress_thread_function(
     ebpf_program_type_t prog_type,
     ebpf_attach_type_t attach_type)
 {
+    uint64_t iteration = 0;
+
     while (!token.stop_requested()) {
 
         int result;
@@ -502,6 +504,8 @@ native_load_stress_thread_function(
         fd_t program_fd;
         bpf_link* link;
 
+        iteration++;
+
         single_instance_hook_t hook(prog_type, attach_type);
         program_info_provider_t xdp_program_info(prog_type);
 
@@ -509,13 +513,16 @@ native_load_stress_thread_function(
         result = ebpf_program_load(
             file_name.c_str(), BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, &object, &program_fd, &error_message);
         if (error_message) {
-            printf("ebpf_program_load failed to load %s with %s\n", file_name.c_str(), error_message);
+            printf(
+                "ebpf_program_load (iteration %llu) failed to load '%s' with error '%s'\n",
+                iteration,
+                file_name.c_str(),
+                error_message);
             ebpf_free((void*)error_message);
         }
         REQUIRE(result == 0);
 
         // Once loaded, we do the least amout of activity in order to maximise the jitter
-        fd_t program_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
 
         // Tell the program which interface to filter on.
         fd_t interface_index_map_fd = bpf_object__find_map_fd_by_name(object, interface_name.c_str());
@@ -523,16 +530,18 @@ native_load_stress_thread_function(
         uint32_t if_index = TEST_IFINDEX;
         REQUIRE(bpf_map_update_elem(interface_index_map_fd, &key, &if_index, EBPF_ANY) == EBPF_SUCCESS);
 
+        // Lookup a key in the map
         uint64_t value = 0;
+        fd_t program_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
         REQUIRE(bpf_map_lookup_elem(program_map_fd, &key, &value) == EBPF_SUCCESS);
         REQUIRE(value == 0);
 
         // Attach only to the single interface being tested.
         REQUIRE(hook.attach_link(program_fd, &if_index, sizeof(if_index), &link) == EBPF_SUCCESS);
 
+        // Close up all
         hook.detach_link(link);
         hook.close_link(link);
-
         bpf_object__close(object);
     }
 }
