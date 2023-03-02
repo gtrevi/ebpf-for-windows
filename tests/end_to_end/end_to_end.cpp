@@ -488,8 +488,8 @@ void
 native_load_stress_thread_function(
     std::stop_token token,
     _In_ const std::string& file_name,
-    _In_ const std::string map_name,
-    _In_ const std::string interface_name,
+    _In_ const std::string& map_name,
+    _In_ const std::string& interface_name,
     ebpf_program_type_t prog_type,
     ebpf_attach_type_t attach_type)
 {
@@ -515,13 +515,17 @@ native_load_stress_thread_function(
         REQUIRE(result == 0);
 
         // Once loaded, we do the least amout of activity in order to maximise the jitter
-        fd_t dropped_packet_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
+        fd_t program_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
 
         // Tell the program which interface to filter on.
         fd_t interface_index_map_fd = bpf_object__find_map_fd_by_name(object, interface_name.c_str());
         uint32_t key = 0;
         uint32_t if_index = TEST_IFINDEX;
         REQUIRE(bpf_map_update_elem(interface_index_map_fd, &key, &if_index, EBPF_ANY) == EBPF_SUCCESS);
+
+        uint64_t value = 0;
+        REQUIRE(bpf_map_lookup_elem(program_map_fd, &key, &value) == EBPF_SUCCESS);
+        REQUIRE(value == 0);
 
         // Attach only to the single interface being tested.
         REQUIRE(hook.attach_link(program_fd, &if_index, sizeof(if_index), &link) == EBPF_SUCCESS);
@@ -533,7 +537,7 @@ native_load_stress_thread_function(
     }
 }
 
-TEST_CASE("native_load_concurrent", "[end_to_end]")
+TEST_CASE("native_load_unload_concurrent", "[end_to_end]")
 {
     typedef struct
     {
@@ -562,10 +566,10 @@ TEST_CASE("native_load_concurrent", "[end_to_end]")
         for (uint32_t i = 0; i < thread_count; i++) {
             threads.emplace_back(
                 native_load_stress_thread_function,
-                &module.file_name,
-                &module.map_name,
-                &module.map_name,
-                module.map_name,
+                std::ref(module.file_name),
+                std::ref(module.map_name),
+                std::ref(module.interface_name),
+                module.prog_type,
                 module.attach_type);
         }
 
