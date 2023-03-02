@@ -83,12 +83,13 @@ test_ioctl_load_native_module_fail(
     request->header.id = EBPF_OPERATION_LOAD_NATIVE_MODULE;
     request->header.length = static_cast<uint16_t>(request_buffer.size());
     request->module_id = *module_id;
+
     memcpy(
         request_buffer.data() + offsetof(ebpf_operation_load_native_module_request_t, data),
         (char*)service_path.c_str(),
         service_path_size);
 
-    error = invoke_ioctl(request_buffer, reply);
+    error = _preprocess_ioctl(request);
     if (error != ERROR_SUCCESS) {
         goto Done;
     }

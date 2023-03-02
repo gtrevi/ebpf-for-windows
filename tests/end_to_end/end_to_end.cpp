@@ -2486,8 +2486,6 @@ TEST_CASE("load_native_program_negative6", "[end-to-end]")
     // Create a new service with same driver and same module id.
     _create_service_helper(L"droppacket_um.dll", NATIVE_DRIVER_SERVICE_NAME_2, &provider_module_id, &service_handle2);
 
-    set_native_module_failures(true);
-
     // Load native module. It should fail.
     service_path2 = service_path2 + NATIVE_DRIVER_SERVICE_NAME_2;
     REQUIRE(
