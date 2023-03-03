@@ -497,7 +497,6 @@ native_load_stress_thread_function(
 
     while (!token.stop_requested()) {
 
-        int result;
         _test_helper_end_to_end test_helper;
         const char* error_message = nullptr;
         bpf_object* object = nullptr;
@@ -507,10 +506,9 @@ native_load_stress_thread_function(
         iteration++;
 
         single_instance_hook_t hook(prog_type, attach_type);
-        program_info_provider_t xdp_program_info(prog_type);
 
         // Load the program
-        result = ebpf_program_load(
+        int result = ebpf_program_load(
             file_name.c_str(), BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, &object, &program_fd, &error_message);
         if (error_message) {
             printf(
@@ -523,18 +521,24 @@ native_load_stress_thread_function(
         REQUIRE(result == 0);
 
         // Once loaded, we do the least amout of activity in order to maximise the jitter
+        uint32_t if_index = TEST_IFINDEX;
 
         // Tell the program which interface to filter on.
-        fd_t interface_index_map_fd = bpf_object__find_map_fd_by_name(object, interface_name.c_str());
         uint32_t key = 0;
-        uint32_t if_index = TEST_IFINDEX;
-        REQUIRE(bpf_map_update_elem(interface_index_map_fd, &key, &if_index, EBPF_ANY) == EBPF_SUCCESS);
+        if (interface_name.length() > 0) {
+            fd_t interface_index_map_fd = bpf_object__find_map_fd_by_name(object, interface_name.c_str());
+            REQUIRE(bpf_map_update_elem(interface_index_map_fd, &key, &if_index, EBPF_ANY) == EBPF_SUCCESS);
+            Platform::_close(interface_index_map_fd);
+        }
 
         // Lookup a key in the map
-        uint64_t value = 0;
-        fd_t program_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
-        REQUIRE(bpf_map_lookup_elem(program_map_fd, &key, &value) == EBPF_SUCCESS);
-        REQUIRE(value == 0);
+        if (map_name.length() > 0) {
+            uint64_t value = 0;
+            fd_t program_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
+            REQUIRE(bpf_map_lookup_elem(program_map_fd, &key, &value) == EBPF_SUCCESS);
+            REQUIRE(value == 0);
+            Platform::_close(program_map_fd);
+        }
 
         // Attach only to the single interface being tested.
         REQUIRE(hook.attach_link(program_fd, &if_index, sizeof(if_index), &link) == EBPF_SUCCESS);
@@ -561,17 +565,14 @@ TEST_CASE("native_load_unload_concurrent", "[end_to_end]")
     std::vector<std::jthread> threads;
     const int CONCURRENT_THREAD_RUN_TIME_IN_SECONDS = 10;
     std::vector<native_module_data_t> native_modues{
-        {"droppacket_um.dll",
-         "dropped_packet_map",
-         "interface_index_map",
-         EBPF_PROGRAM_TYPE_XDP,
-         EBPF_ATTACH_TYPE_XDP}};
+        {"droppacket_um.dll", "dropped_packet_map", "interface_index_map", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP},
+        {"divide_by_zero_um.dll", "", "", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP}};
 
     // Test all the defined native module (simulated in usermode)
     for (auto module : native_modues) {
-
         // Attempt to saturate all core threads
         uint32_t thread_count = 2 * ebpf_get_cpu_count();
+        printf("Testing '%s' with %u threads...\n", module.file_name.c_str(), thread_count);
         for (uint32_t i = 0; i < thread_count; i++) {
             threads.emplace_back(
                 native_load_stress_thread_function,
