@@ -493,11 +493,11 @@ native_load_stress_thread_function(
     ebpf_program_type_t prog_type,
     ebpf_attach_type_t attach_type)
 {
-    uint64_t iteration = 0;
+    _test_helper_end_to_end test_helper;
 
+    uint64_t iteration = 0;
     while (!token.stop_requested()) {
 
-        _test_helper_end_to_end test_helper;
         const char* error_message = nullptr;
         bpf_object* object = nullptr;
         fd_t program_fd;
@@ -561,6 +561,8 @@ TEST_CASE("native_load_unload_concurrent", "[end_to_end]")
         ebpf_attach_type_t attach_type;
 
     } native_module_data_t;
+    _test_helper_end_to_end test_helper;
+
     ebpf_extension_data_t npi_specific_characteristics = {};
     std::vector<std::jthread> threads;
     const int CONCURRENT_THREAD_RUN_TIME_IN_SECONDS = 10;
