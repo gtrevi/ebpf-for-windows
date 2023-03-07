@@ -520,9 +520,9 @@ native_load_stress_thread_function(
         }
         REQUIRE(result == 0);
 
-        // Once loaded, we do the least amout of activity in order to maximise the jitter
+        // Once loaded, we do the least amount of activity in order to maximize the jitter
 
-        // Lookup a key in the map
+        // Optionally, lookup a key in the given map (as a further test)
         if (map_name.length() > 0) {
             uint32_t key = 0;
             uint64_t value = 0;
@@ -532,7 +532,7 @@ native_load_stress_thread_function(
             Platform::_close(program_map_fd);
         }
 
-        // Attach only to the single interface being tested.
+        // Attach only to the test interface
         uint32_t if_index = TEST_IFINDEX;
         REQUIRE(hook.attach_link(program_fd, &if_index, sizeof(if_index), &link) == EBPF_SUCCESS);
 
@@ -542,7 +542,7 @@ native_load_stress_thread_function(
         bpf_object__close(object);
     }
     printf(
-        "Stress-testing '%s' - thread %u succesfully completed with %llu iterations.\n",
+        "Stress-testing '%s' - thread %u successfully completed with %llu iterations.\n",
         file_name.c_str(),
         thread_no,
         iterations);
@@ -567,7 +567,7 @@ TEST_CASE("native_load_unload_concurrent", "[end_to_end]")
         {"droppacket_um.dll", "dropped_packet_map", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP},
         {"divide_by_zero_um.dll", "", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP}};
 
-    // Test all the defined native module (simulated in usermode)
+    // Test all the defined native module (simulated in user mode)
     for (auto module : native_modues) {
 
         // Attempt to saturate all core threads
