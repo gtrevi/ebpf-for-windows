@@ -487,15 +487,14 @@ droppacket_test(ebpf_execution_type_t execution_type)
 void
 native_load_stress_thread_function(
     std::stop_token token,
+    uint32_t thread_no,
     _In_ const std::string& file_name,
     _In_ const std::string& map_name,
-    _In_ const std::string& interface_name,
     ebpf_program_type_t prog_type,
     ebpf_attach_type_t attach_type)
 {
-    _test_helper_end_to_end test_helper;
-
-    uint64_t iteration = 0;
+    uint64_t iterations = 0;
+    printf("Stress-testing '%s' - thread %u...\n", file_name.c_str(), thread_no);
     while (!token.stop_requested()) {
 
         const char* error_message = nullptr;
@@ -503,9 +502,10 @@ native_load_stress_thread_function(
         fd_t program_fd;
         bpf_link* link;
 
-        iteration++;
+        iterations++;
 
         single_instance_hook_t hook(prog_type, attach_type);
+        program_info_provider_t program_info(prog_type);
 
         // Load the program
         int result = ebpf_program_load(
@@ -513,7 +513,7 @@ native_load_stress_thread_function(
         if (error_message) {
             printf(
                 "ebpf_program_load (iteration %llu) failed to load '%s' with error '%s'\n",
-                iteration,
+                iterations,
                 file_name.c_str(),
                 error_message);
             ebpf_free((void*)error_message);
@@ -521,18 +521,10 @@ native_load_stress_thread_function(
         REQUIRE(result == 0);
 
         // Once loaded, we do the least amout of activity in order to maximise the jitter
-        uint32_t if_index = TEST_IFINDEX;
-
-        // Tell the program which interface to filter on.
-        uint32_t key = 0;
-        if (interface_name.length() > 0) {
-            fd_t interface_index_map_fd = bpf_object__find_map_fd_by_name(object, interface_name.c_str());
-            REQUIRE(bpf_map_update_elem(interface_index_map_fd, &key, &if_index, EBPF_ANY) == EBPF_SUCCESS);
-            Platform::_close(interface_index_map_fd);
-        }
 
         // Lookup a key in the map
         if (map_name.length() > 0) {
+            uint32_t key = 0;
             uint64_t value = 0;
             fd_t program_map_fd = bpf_object__find_map_fd_by_name(object, map_name.c_str());
             REQUIRE(bpf_map_lookup_elem(program_map_fd, &key, &value) == EBPF_SUCCESS);
@@ -541,6 +533,7 @@ native_load_stress_thread_function(
         }
 
         // Attach only to the single interface being tested.
+        uint32_t if_index = TEST_IFINDEX;
         REQUIRE(hook.attach_link(program_fd, &if_index, sizeof(if_index), &link) == EBPF_SUCCESS);
 
         // Close up all
@@ -548,39 +541,44 @@ native_load_stress_thread_function(
         hook.close_link(link);
         bpf_object__close(object);
     }
+    printf(
+        "Stress-testing '%s' - thread %u succesfully completed with %llu iterations.\n",
+        file_name.c_str(),
+        thread_no,
+        iterations);
 }
 
 TEST_CASE("native_load_unload_concurrent", "[end_to_end]")
 {
+    _test_helper_end_to_end test_helper;
+
     typedef struct
     {
         std::string file_name;
         std::string map_name;
-        std::string interface_name;
         ebpf_program_type_t prog_type;
         ebpf_attach_type_t attach_type;
 
     } native_module_data_t;
-    _test_helper_end_to_end test_helper;
-
     ebpf_extension_data_t npi_specific_characteristics = {};
     std::vector<std::jthread> threads;
     const int CONCURRENT_THREAD_RUN_TIME_IN_SECONDS = 10;
     std::vector<native_module_data_t> native_modues{
-        {"droppacket_um.dll", "dropped_packet_map", "interface_index_map", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP},
-        {"divide_by_zero_um.dll", "", "", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP}};
+        {"droppacket_um.dll", "dropped_packet_map", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP},
+        {"divide_by_zero_um.dll", "", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP}};
 
     // Test all the defined native module (simulated in usermode)
     for (auto module : native_modues) {
+
         // Attempt to saturate all core threads
         uint32_t thread_count = 2 * ebpf_get_cpu_count();
         printf("Testing '%s' with %u threads...\n", module.file_name.c_str(), thread_count);
         for (uint32_t i = 0; i < thread_count; i++) {
             threads.emplace_back(
                 native_load_stress_thread_function,
+                i,
                 std::ref(module.file_name),
                 std::ref(module.map_name),
-                std::ref(module.interface_name),
                 module.prog_type,
                 module.attach_type);
         }
