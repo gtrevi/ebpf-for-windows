@@ -485,7 +485,7 @@ droppacket_test(ebpf_execution_type_t execution_type)
 }
 
 void
-native_load_stress_thread_function(
+native_load_unload_thread(
     std::stop_token token,
     uint32_t thread_no,
     _In_ const std::string& file_name,
@@ -493,29 +493,31 @@ native_load_stress_thread_function(
     ebpf_program_type_t prog_type,
     ebpf_attach_type_t attach_type)
 {
-    uint64_t iterations = 0;
-    printf("Stress-testing '%s' - thread %u...\n", file_name.c_str(), thread_no);
+    uint64_t iteration = 0;
+    printf("native_load_unload_thread[%u] for '%s' started...\n", thread_no, file_name.c_str());
     while (!token.stop_requested()) {
 
         const char* error_message = nullptr;
         bpf_object* object = nullptr;
+        bpf_link* link = nullptr;
         fd_t program_fd;
-        bpf_link* link;
 
-        iterations++;
+        iteration++;
 
         single_instance_hook_t hook(prog_type, attach_type);
         program_info_provider_t program_info(prog_type);
 
-        // Load the program
+        // Load the given program
         int result = ebpf_program_load(
             file_name.c_str(), BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, &object, &program_fd, &error_message);
-        if (error_message) {
+        if (result != 0) {
             printf(
-                "ebpf_program_load (iteration %llu) failed to load '%s' with error '%s'\n",
-                iterations,
+                "native_load_unload_thread[%u/%llu]: ebpf_program_load() failed to load '%s' with error (%i)-'%s'\n",
+                thread_no,
+                iteration,
                 file_name.c_str(),
-                error_message);
+                result,
+                error_message ? error_message : "(null)");
             ebpf_free((void*)error_message);
         }
         REQUIRE(result == 0);
@@ -532,7 +534,7 @@ native_load_stress_thread_function(
             Platform::_close(program_map_fd);
         }
 
-        // Attach only to the test interface
+        // Attach to the test interface
         uint32_t if_index = TEST_IFINDEX;
         REQUIRE(hook.attach_link(program_fd, &if_index, sizeof(if_index), &link) == EBPF_SUCCESS);
 
@@ -540,12 +542,15 @@ native_load_stress_thread_function(
         hook.detach_link(link);
         hook.close_link(link);
         bpf_object__close(object);
+
+        // Temp-debug trace - REMOVE on final PR
+        printf("\nnative_load_unload_thread[%u/%llu] for '%s' complete.\n", thread_no, iteration, file_name.c_str());
     }
     printf(
-        "Stress-testing '%s' - thread %u successfully completed with %llu iterations.\n",
-        file_name.c_str(),
+        "native_load_unload_thread[%u] for '%s' successfully completed with %llu iterations.\n",
         thread_no,
-        iterations);
+        file_name.c_str(),
+        iteration);
 }
 
 TEST_CASE("native_load_unload_concurrent", "[end_to_end]")
@@ -560,22 +565,19 @@ TEST_CASE("native_load_unload_concurrent", "[end_to_end]")
         ebpf_attach_type_t attach_type;
 
     } native_module_data_t;
-    ebpf_extension_data_t npi_specific_characteristics = {};
-    std::vector<std::jthread> threads;
-    const int CONCURRENT_THREAD_RUN_TIME_IN_SECONDS = 10;
     std::vector<native_module_data_t> native_modues{
         {"droppacket_um.dll", "dropped_packet_map", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP},
         {"divide_by_zero_um.dll", "", EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP}};
+    const int CONCURRENT_THREAD_RUN_TIME_IN_SECONDS = 10;
 
-    // Test all the defined native module (simulated in user mode)
+    // Test all the defined native modules (simulated in user mode)
     for (auto module : native_modues) {
+        std::vector<std::jthread> threads;
 
-        // Attempt to saturate all core threads
-        uint32_t thread_count = 2 * ebpf_get_cpu_count();
-        printf("Testing '%s' with %u threads...\n", module.file_name.c_str(), thread_count);
-        for (uint32_t i = 0; i < thread_count; i++) {
+        // Attempt to saturate all core threads with contention
+        for (uint32_t i = 0; i < ebpf_get_cpu_count() * 4; i++) {
             threads.emplace_back(
-                native_load_stress_thread_function,
+                native_load_unload_thread,
                 i,
                 std::ref(module.file_name),
                 std::ref(module.map_name),
