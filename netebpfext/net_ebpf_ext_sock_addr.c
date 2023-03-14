@@ -420,14 +420,14 @@ _net_ebpf_sock_addr_update_store_entries()
 
     // Update section information.
     uint32_t section_info_count = sizeof(_ebpf_sock_addr_section_info) / sizeof(ebpf_program_section_info_t);
-    status = ebpf_store_update_section_information(&_ebpf_sock_addr_section_info[0], section_info_count);
+    status = _ebpf_store_update_section_information(&_ebpf_sock_addr_section_info[0], section_info_count);
     if (!NT_SUCCESS(status)) {
         NET_EBPF_EXT_RETURN_NTSTATUS(status);
     }
 
     // Update program information.
     _ebpf_sock_addr_program_info.program_type_descriptor.program_type = EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR;
-    status = ebpf_store_update_program_information(&_ebpf_sock_addr_program_info, 1);
+    status = _ebpf_store_update_program_information(&_ebpf_sock_addr_program_info, 1);
 
     NET_EBPF_EXT_RETURN_NTSTATUS(status);
 }
@@ -517,9 +517,11 @@ _net_ebpf_sock_addr_clean_up_security_descriptor()
 {
     if (_net_ebpf_ext_dacl_admin != NULL) {
         ExFreePool(_net_ebpf_ext_dacl_admin);
+        _net_ebpf_ext_dacl_admin = NULL;
     }
     if (_net_ebpf_ext_security_descriptor_admin != NULL) {
         ExFreePool(_net_ebpf_ext_security_descriptor_admin);
+        _net_ebpf_ext_security_descriptor_admin = NULL;
     }
 }
 
@@ -775,8 +777,9 @@ net_ebpf_ext_sock_addr_register_providers()
     _ebpf_sock_addr_program_info_provider_moduleid.Guid = EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR;
     status = net_ebpf_extension_program_info_provider_register(
         &program_info_provider_parameters, &_ebpf_sock_addr_program_info_provider_context);
-    if (status != STATUS_SUCCESS)
+    if (!NT_SUCCESS(status)) {
         goto Exit;
+    }
 
     for (int i = 0; i < NET_EBPF_SOCK_ADDR_HOOK_PROVIDER_COUNT; i++) {
         const net_ebpf_extension_hook_provider_parameters_t hook_provider_parameters = {
@@ -802,10 +805,14 @@ net_ebpf_ext_sock_addr_register_providers()
             _net_ebpf_extension_sock_addr_on_client_detach,
             &_net_ebpf_extension_sock_addr_wfp_filter_parameters[i],
             &_ebpf_sock_addr_hook_provider_context[i]);
+        if (!NT_SUCCESS(status)) {
+            goto Exit;
+        }
     }
 
 Exit:
     if (!NT_SUCCESS(status)) {
+        net_ebpf_ext_sock_addr_unregister_providers();
         _net_ebpf_sock_addr_clean_up_security_descriptor();
     }
     NET_EBPF_EXT_RETURN_NTSTATUS(status);
@@ -814,9 +821,16 @@ Exit:
 void
 net_ebpf_ext_sock_addr_unregister_providers()
 {
-    for (int i = 0; i < NET_EBPF_SOCK_ADDR_HOOK_PROVIDER_COUNT; i++)
-        net_ebpf_extension_hook_provider_unregister(_ebpf_sock_addr_hook_provider_context[i]);
-    net_ebpf_extension_program_info_provider_unregister(_ebpf_sock_addr_program_info_provider_context);
+    for (int i = 0; i < NET_EBPF_SOCK_ADDR_HOOK_PROVIDER_COUNT; i++) {
+        if (_ebpf_sock_addr_hook_provider_context[i]) {
+            net_ebpf_extension_hook_provider_unregister(_ebpf_sock_addr_hook_provider_context[i]);
+            _ebpf_sock_addr_hook_provider_context[i] = NULL;
+        }
+    }
+    if (_ebpf_sock_addr_program_info_provider_context) {
+        net_ebpf_extension_program_info_provider_unregister(_ebpf_sock_addr_program_info_provider_context);
+        _ebpf_sock_addr_program_info_provider_context = NULL;
+    }
 
     _net_ebpf_ext_purge_lru_contexts(TRUE);
     _net_ebpf_sock_addr_clean_up_security_descriptor();
@@ -1067,8 +1081,11 @@ net_ebpf_extension_sock_addr_authorize_recv_accept_classify(
         goto Exit;
     }
 
-    if (net_ebpf_extension_hook_invoke_program(attached_client, sock_addr_ctx, &result) != EBPF_SUCCESS)
+    if (net_ebpf_extension_hook_invoke_program(attached_client, sock_addr_ctx, &result) != EBPF_SUCCESS) {
+        // Block the request if we failed to invoke the eBPF program.
+        classify_output->actionType = FWP_ACTION_BLOCK;
         goto Exit;
+    }
 
     classify_output->actionType = (result == BPF_SOCK_ADDR_VERDICT_PROCEED) ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
     if (classify_output->actionType == FWP_ACTION_BLOCK)
@@ -1304,7 +1321,7 @@ net_ebpf_extension_sock_addr_redirect_connection_classify(
     net_ebpf_extension_connection_context_t* connection_context_original = NULL;
     net_ebpf_extension_connection_context_t* connection_context_redirected = NULL;
     BOOLEAN redirected = FALSE;
-    FWP_ACTION_TYPE action = FWP_ACTION_BLOCK;
+    FWP_ACTION_TYPE action = FWP_ACTION_PERMIT;
     BOOLEAN classify_handle_acquired = FALSE;
     BOOLEAN v4_mapped = FALSE;
     BOOLEAN is_original_connection;

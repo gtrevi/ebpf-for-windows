@@ -268,14 +268,14 @@ _net_ebpf_sock_ops_update_store_entries()
 
     // Update section information.
     uint32_t section_info_count = sizeof(_ebpf_sock_ops_section_info) / sizeof(ebpf_program_section_info_t);
-    status = ebpf_store_update_section_information(&_ebpf_sock_ops_section_info[0], section_info_count);
+    status = _ebpf_store_update_section_information(&_ebpf_sock_ops_section_info[0], section_info_count);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
     // Update program information.
     _ebpf_sock_ops_program_info.program_type_descriptor.program_type = EBPF_PROGRAM_TYPE_SOCK_OPS;
-    status = ebpf_store_update_program_information(&_ebpf_sock_ops_program_info, 1);
+    status = _ebpf_store_update_program_information(&_ebpf_sock_ops_program_info, 1);
 
     return status;
 }
@@ -302,8 +302,9 @@ net_ebpf_ext_sock_ops_register_providers()
     _ebpf_sock_ops_program_info_provider_moduleid.Guid = EBPF_PROGRAM_TYPE_SOCK_OPS;
     status = net_ebpf_extension_program_info_provider_register(
         &program_info_provider_parameters, &_ebpf_sock_ops_program_info_provider_context);
-    if (status != STATUS_SUCCESS)
+    if (!NT_SUCCESS(status)) {
         goto Exit;
+    }
 
     _net_ebpf_sock_ops_hook_provider_data.supported_program_type = EBPF_PROGRAM_TYPE_SOCK_OPS;
     _net_ebpf_sock_ops_hook_provider_data.bpf_attach_type = BPF_CGROUP_SOCK_OPS;
@@ -320,18 +321,28 @@ net_ebpf_ext_sock_ops_register_providers()
         NULL,
         &_ebpf_sock_ops_hook_provider_context);
 
-    if (status != EBPF_SUCCESS)
+    if (status != EBPF_SUCCESS) {
         goto Exit;
+    }
 
 Exit:
+    if (!NT_SUCCESS(status)) {
+        net_ebpf_ext_sock_ops_unregister_providers();
+    }
     NET_EBPF_EXT_RETURN_NTSTATUS(status);
 }
 
 void
 net_ebpf_ext_sock_ops_unregister_providers()
 {
-    net_ebpf_extension_hook_provider_unregister(_ebpf_sock_ops_hook_provider_context);
-    net_ebpf_extension_program_info_provider_unregister(_ebpf_sock_ops_program_info_provider_context);
+    if (_ebpf_sock_ops_hook_provider_context) {
+        net_ebpf_extension_hook_provider_unregister(_ebpf_sock_ops_hook_provider_context);
+        _ebpf_sock_ops_hook_provider_context = NULL;
+    }
+    if (_ebpf_sock_ops_program_info_provider_context) {
+        net_ebpf_extension_program_info_provider_unregister(_ebpf_sock_ops_program_info_provider_context);
+        _ebpf_sock_ops_program_info_provider_context = NULL;
+    }
 }
 
 wfp_ale_layer_fields_t wfp_flow_established_fields[] = {
