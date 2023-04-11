@@ -1807,6 +1807,7 @@ TEST_CASE("xdp-encap-reflect-v6-interpret", "[xdp_tests]")
 }
 #endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static void
 _xdp_decapsulate_permit_packet_test(ebpf_execution_type_t execution_type, ADDRESS_FAMILY address_family)
 {
@@ -1846,6 +1847,7 @@ _xdp_decapsulate_permit_packet_test(ebpf_execution_type_t execution_type, ADDRES
         REQUIRE(memcmp(ipv6, inner_ip_datagram.data(), inner_ip_datagram.size()) == 0);
     }
 }
+#endif
 
 #if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("xdp-decapsulate-permit-v4-jit", "[xdp_tests]")
