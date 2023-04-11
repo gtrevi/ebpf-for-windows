@@ -3,17 +3,40 @@
 
 #include "netebpf_ext_helper.h"
 
+// TODO: Issue #1231 Change to using HKEY_LOCAL_MACHINE
 ebpf_registry_key_t ebpf_root_registry_key = HKEY_CURRENT_USER;
 DEVICE_OBJECT* _net_ebpf_ext_driver_device_object;
 
-static ebpf_result_t
-_get_program_context(_Outptr_ void** context)
-{
-    *context = nullptr;
-    return EBPF_KEY_NOT_FOUND;
-}
+constexpr uint32_t _test_destination_ipv4_address = 0x01020304;
+static FWP_BYTE_ARRAY16 _test_destination_ipv6_address = {1, 2, 3, 4};
+constexpr uint16_t _test_destination_port = 1234;
+constexpr uint32_t _test_source_ipv4_address = 0x05060708;
+static FWP_BYTE_ARRAY16 _test_source_ipv6_address = {5, 6, 7, 8};
+constexpr uint16_t _test_source_port = 5678;
+constexpr uint8_t _test_protocol = IPPROTO_TCP;
+constexpr uint32_t _test_compartment_id = 1;
+static FWP_BYTE_BLOB _test_app_id = {.size = 2, .data = (uint8_t*)"\\"};
+static uint64_t _test_interface_luid = 1;
+static TOKEN_ACCESS_INFORMATION _test_token_access_information = {0};
+static FWP_BYTE_BLOB _test_user_id = {
+    .size = (sizeof(TOKEN_ACCESS_INFORMATION)), .data = (uint8_t*)&_test_token_access_information};
 
-ebpf_extension_dispatch_table_t dispatch_table = {0, 1, {(_ebpf_extension_dispatch_function)_get_program_context}};
+void
+netebpfext_initialize_fwp_classify_parameters(_Out_ fwp_classify_parameters_t* parameters)
+{
+    parameters->destination_ipv4_address = _test_destination_ipv4_address;
+    parameters->destination_ipv6_address = _test_destination_ipv6_address;
+    parameters->source_ipv4_address = _test_source_ipv4_address;
+    parameters->source_ipv6_address = _test_source_ipv6_address;
+    parameters->source_port = _test_source_port;
+    parameters->destination_port = _test_destination_port;
+    parameters->protocol = _test_protocol;
+    parameters->compartment_id = _test_compartment_id;
+    parameters->app_id = _test_app_id;
+    parameters->interface_luid = _test_interface_luid;
+    parameters->token_access_information = _test_token_access_information;
+    parameters->user_id = _test_user_id;
+}
 
 _netebpf_ext_helper::_netebpf_ext_helper(
     _In_opt_ const void* npi_specific_characteristics,
@@ -24,6 +47,9 @@ _netebpf_ext_helper::_netebpf_ext_helper(
     status = net_ebpf_ext_trace_initiate();
     REQUIRE(NT_SUCCESS(status));
     trace_initiated = true;
+
+    REQUIRE(ebpf_platform_initiate() == EBPF_SUCCESS);
+    platform_initialized = true;
 
     status = net_ebpf_ext_initialize_ndis_handles(driver_object);
     REQUIRE(NT_SUCCESS(status));
@@ -80,6 +106,10 @@ _netebpf_ext_helper::~_netebpf_ext_helper()
         net_ebpf_ext_uninitialize_ndis_handles();
     }
 
+    if (platform_initialized) {
+        ebpf_platform_terminate();
+    }
+
     if (trace_initiated) {
         net_ebpf_ext_trace_terminate();
     }
@@ -122,7 +152,7 @@ _netebpf_ext_helper::_program_info_client_attach_provider(
     NTSTATUS status = NmrClientAttachProvider(
         nmr_binding_handle,
         client_binding_context.get(),
-        &dispatch_table,
+        &client_binding_context,
         &client_binding_context->context,
         &client_binding_context->dispatch);
 
@@ -155,12 +185,12 @@ _netebpf_ext_helper::_hook_client_attach_provider(
 {
     UNREFERENCED_PARAMETER(provider_registration_instance);
     const void* provider_dispatch_table;
-    ebpf_extension_dispatch_table_t client_dispatch_table = {.size = 1};
     auto base_client_context = reinterpret_cast<netebpfext_helper_base_client_context_t*>(client_context);
     if (base_client_context == nullptr) {
         return STATUS_INVALID_PARAMETER;
     }
-    client_dispatch_table.function[0] = base_client_context->helper->hook_invoke_function;
+    const ebpf_extension_dispatch_table_t client_dispatch_table = {
+        .version = 1, .count = 1, .function = base_client_context->helper->hook_invoke_function};
     auto provider_characteristics =
         (const ebpf_extension_data_t*)provider_registration_instance->NpiSpecificCharacteristics;
     auto provider_data = (const ebpf_attach_provider_data_t*)provider_characteristics->data;

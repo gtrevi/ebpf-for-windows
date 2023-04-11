@@ -13,6 +13,10 @@
 #include "program_helper.h"
 #include "test_helper.hpp"
 
+#include <chrono>
+#include <stop_token>
+#include <thread>
+
 // libbpf.h uses enum types and generates the
 // following warning whenever an enum type is used below:
 // "The enum type 'bpf_attach_type' is unscoped.
@@ -556,10 +560,10 @@ TEST_CASE("libbpf program attach", "[libbpf]")
     int result = bpf_object__load(object);
     REQUIRE(result == 0);
 
-    bpf_link* link = bpf_program__attach(program);
+    bpf_link_ptr link(bpf_program__attach(program));
     REQUIRE(link != nullptr);
 
-    int link_fd = bpf_link__fd(link);
+    int link_fd = bpf_link__fd(link.get());
     REQUIRE(link_fd >= 0);
 
     result = bpf_link_detach(link_fd);
@@ -573,7 +577,7 @@ TEST_CASE("libbpf program attach", "[libbpf]")
     REQUIRE(result < 0);
     REQUIRE(errno == EBADF);
 
-    result = bpf_link__destroy(link);
+    result = bpf_link__destroy(link.release());
     REQUIRE(result == 0);
 
     bpf_object__close(object);
@@ -1163,7 +1167,7 @@ TEST_CASE("libbpf obj pinning", "[libbpf]")
 }
 
 static void
-_ebpf_test_tail_call(_In_z_ const char* filename, int expected_result)
+_ebpf_test_tail_call(_In_z_ const char* filename, uint32_t expected_result)
 {
     _test_helper_end_to_end test_helper;
     single_instance_hook_t hook(EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP);
@@ -1221,12 +1225,12 @@ _ebpf_test_tail_call(_In_z_ const char* filename, int expected_result)
     REQUIRE(callee_fd2 > 0);
     Platform::_close(callee_fd2);
 
-    bpf_link* link = bpf_program__attach_xdp(caller, 1);
+    bpf_link_ptr link(bpf_program__attach_xdp(caller, 1));
     REQUIRE(link != nullptr);
 
     auto packet = prepare_udp_packet(0, ETHERNET_TYPE_IPV4);
     xdp_md_t ctx{packet.data(), packet.data() + packet.size()};
-    int result;
+    uint32_t result;
     REQUIRE(hook.fire(&ctx, &result) == EBPF_SUCCESS);
     REQUIRE(result == expected_result);
 
@@ -1237,13 +1241,13 @@ _ebpf_test_tail_call(_In_z_ const char* filename, int expected_result)
 
     // Is bpf_tail_call expected to work?
     // Verify stack unwind occured.
-    if (expected_result >= 0) {
+    if ((int)expected_result >= 0) {
         REQUIRE(value == 0);
     } else {
         REQUIRE(value != 0);
     }
 
-    result = bpf_link__destroy(link);
+    result = bpf_link__destroy(link.release());
     REQUIRE(result == 0);
     bpf_object__close(object);
 }
@@ -1260,9 +1264,15 @@ TEST_CASE("good_tail_call-native", "[libbpf]")
     _ebpf_test_tail_call("tail_call_um.dll", 42);
 }
 
-TEST_CASE("bad_tail_call-jit", "[libbpf]") { _ebpf_test_tail_call("tail_call_bad.o", -EBPF_INVALID_ARGUMENT); }
+TEST_CASE("bad_tail_call-jit", "[libbpf]")
+{
+    _ebpf_test_tail_call("tail_call_bad.o", (uint32_t)(-EBPF_INVALID_ARGUMENT));
+}
 
-TEST_CASE("bad_tail_call-native", "[libbpf]") { _ebpf_test_tail_call("tail_call_bad_um.dll", -EBPF_INVALID_ARGUMENT); }
+TEST_CASE("bad_tail_call-native", "[libbpf]")
+{
+    _ebpf_test_tail_call("tail_call_bad_um.dll", (uint32_t)(-EBPF_INVALID_ARGUMENT));
+}
 
 static void
 _multiple_tail_calls_test(ebpf_execution_type_t execution_type)
@@ -1331,12 +1341,12 @@ _multiple_tail_calls_test(ebpf_execution_type_t execution_type)
     REQUIRE(callee1_fd2 > 0);
     Platform::_close(callee1_fd2);
 
-    bpf_link* link = bpf_program__attach_xdp(caller, 1);
+    bpf_link_ptr link(bpf_program__attach_xdp(caller, 1));
     REQUIRE(link != nullptr);
 
     auto packet = prepare_udp_packet(0, ETHERNET_TYPE_IPV4);
     xdp_md_t ctx{packet.data(), packet.data() + packet.size()};
-    int result;
+    uint32_t result;
     REQUIRE(hook.fire(&ctx, &result) == EBPF_SUCCESS);
     REQUIRE(result == 3);
 
@@ -1350,7 +1360,7 @@ _multiple_tail_calls_test(ebpf_execution_type_t execution_type)
     REQUIRE(bpf_map_update_elem(map_fd, (uint8_t*)&index, (uint8_t*)&ebpf_fd_invalid, 0) == 0);
     REQUIRE(error == 0);
 
-    result = bpf_link__destroy(link);
+    result = bpf_link__destroy(link.release());
     REQUIRE(result == 0);
     bpf_object__close(object);
 }
@@ -1597,7 +1607,7 @@ _array_of_maps_test(ebpf_execution_type_t execution_type)
     REQUIRE(inner_map_fd > 0);
 
     // Add a value to the inner map.
-    int inner_value = 42;
+    uint32_t inner_value = 42;
     uint32_t inner_key = 0;
     int error = bpf_map_update_elem(inner_map_fd, &inner_key, &inner_value, 0);
     REQUIRE(error == 0);
@@ -1607,20 +1617,20 @@ _array_of_maps_test(ebpf_execution_type_t execution_type)
     error = bpf_map_update_elem(outer_map_fd, &outer_key, &inner_map_fd, 0);
     REQUIRE(error == 0);
 
-    bpf_link* link = bpf_program__attach_xdp(caller, 1);
+    bpf_link_ptr link(bpf_program__attach_xdp(caller, 1));
     REQUIRE(link != nullptr);
 
     // Now run the ebpf program.
     auto packet = prepare_udp_packet(0, ETHERNET_TYPE_IPV4);
     xdp_md_t ctx{packet.data(), packet.data() + packet.size()};
-    int result;
+    uint32_t result;
     REQUIRE(hook.fire(&ctx, &result) == EBPF_SUCCESS);
 
     // Verify the return value is what we saved in the inner map.
     REQUIRE(result == inner_value);
 
     Platform::_close(inner_map_fd);
-    result = bpf_link__destroy(link);
+    result = bpf_link__destroy(link.release());
     REQUIRE(result == 0);
     bpf_object__close(xdp_object);
 }
@@ -1656,7 +1666,7 @@ _array_of_maps2_test(ebpf_execution_type_t execution_type)
     REQUIRE(inner_map_fd > 0);
 
     // Add a value to the inner map.
-    int inner_value = 42;
+    uint32_t inner_value = 42;
     uint32_t inner_key = 0;
     int error = bpf_map_update_elem(inner_map_fd, &inner_key, &inner_value, 0);
     REQUIRE(error == 0);
@@ -1666,20 +1676,20 @@ _array_of_maps2_test(ebpf_execution_type_t execution_type)
     error = bpf_map_update_elem(outer_map_fd, &outer_key, &inner_map_fd, 0);
     REQUIRE(error == 0);
 
-    bpf_link* link = bpf_program__attach_xdp(caller, 1);
+    bpf_link_ptr link(bpf_program__attach_xdp(caller, 1));
     REQUIRE(link != nullptr);
 
     // Now run the ebpf program.
     auto packet = prepare_udp_packet(0, ETHERNET_TYPE_IPV4);
     xdp_md_t ctx{packet.data(), packet.data() + packet.size()};
-    int result;
+    uint32_t result;
     REQUIRE(hook.fire(&ctx, &result) == EBPF_SUCCESS);
 
     // Verify the return value is what we saved in the inner map.
     REQUIRE(result == inner_value);
 
     Platform::_close(inner_map_fd);
-    result = bpf_link__destroy(link);
+    result = bpf_link__destroy(link.release());
     REQUIRE(result == 0);
     bpf_object__close(xdp_object);
 }
@@ -2008,24 +2018,24 @@ TEST_CASE("bpf_link__pin", "[libbpf]")
     REQUIRE(bpf_prog_attach(program_fd, 0, BPF_CGROUP_INET4_CONNECT, 0) == -EINVAL);
 
     // Attach the program so we get a link object.
-    bpf_link* link = bpf_program__attach(program);
+    bpf_link_ptr link(bpf_program__attach(program));
     REQUIRE(link != nullptr);
 
     // Verify that unpinning an unpinned link fails.
-    REQUIRE(bpf_link__unpin(link) == -ENOENT);
+    REQUIRE(bpf_link__unpin(link.get()) == -ENOENT);
 
     // Verify that pinning a link to an already-in-use path fails.
-    REQUIRE(bpf_link__pin(link, program_pin_name) == -EEXIST);
+    REQUIRE(bpf_link__pin(link.get(), program_pin_name) == -EEXIST);
 
     // Verify that pinning a link to a new path works.
-    REQUIRE(bpf_link__pin(link, "MyPath") == 0);
+    REQUIRE(bpf_link__pin(link.get(), "MyPath") == 0);
 
     // Verify that pinning an already-pinned link fails.
-    REQUIRE(bpf_link__pin(link, "MyPath2") == -EBUSY);
+    REQUIRE(bpf_link__pin(link.get(), "MyPath2") == -EBUSY);
 
-    REQUIRE(bpf_link__unpin(link) == 0);
+    REQUIRE(bpf_link__unpin(link.get()) == 0);
 
-    REQUIRE(bpf_link__destroy(link) == 0);
+    REQUIRE(bpf_link__destroy(link.release()) == 0);
     REQUIRE(bpf_program__unpin(program, program_pin_name) == 0);
 
     bpf_program__unload(program);
@@ -2286,18 +2296,18 @@ TEST_CASE("bpf_object__open with .dll", "[libbpf]")
     REQUIRE(bpf_object__next_program(object, program) == nullptr);
 
     // Trying to attach the program should fail since it's not loaded yet.
-    bpf_link* link = bpf_program__attach(program);
+    bpf_link_ptr link(bpf_program__attach(program));
     REQUIRE(link == nullptr);
-    REQUIRE(libbpf_get_error(link) == -EINVAL);
+    REQUIRE(libbpf_get_error(link.get()) == -EINVAL);
 
     // Load the program.
     REQUIRE(bpf_object__load(object) == 0);
 
     // Attach should now succeed.
-    link = bpf_program__attach(program);
+    link.reset(bpf_program__attach(program));
     REQUIRE(link != nullptr);
 
-    REQUIRE(bpf_link__destroy(link) == 0);
+    REQUIRE(bpf_link__destroy(link.release()) == 0);
 
     bpf_object__close(object);
 }
@@ -2332,9 +2342,9 @@ TEST_CASE("bpf_object__open_file with .dll", "[libbpf]")
     REQUIRE(map == nullptr);
 
     // Trying to attach the program should fail since it's not loaded yet.
-    bpf_link* link = bpf_program__attach(program);
+    bpf_link_ptr link(bpf_program__attach(program));
     REQUIRE(link == nullptr);
-    REQUIRE(libbpf_get_error(link) == -EINVAL);
+    REQUIRE(libbpf_get_error(link.get()) == -EINVAL);
 
     // Load the program.
     REQUIRE(bpf_object__load(object) == 0);
@@ -2351,10 +2361,10 @@ TEST_CASE("bpf_object__open_file with .dll", "[libbpf]")
     REQUIRE(map == nullptr);
 
     // Attach should now succeed.
-    link = bpf_program__attach(program);
+    link.reset(bpf_program__attach(program));
     REQUIRE(link != nullptr);
 
-    REQUIRE(bpf_link__destroy(link) == 0);
+    REQUIRE(bpf_link__destroy(link.release()) == 0);
 
     bpf_object__close(object);
 }
@@ -2394,15 +2404,15 @@ TEST_CASE("bpf_object__load with .o", "[libbpf]")
     REQUIRE(map == nullptr);
 
     // Trying to attach the program should fail since it's not loaded yet.
-    bpf_link* link = bpf_program__attach(program);
+    bpf_link_ptr link(bpf_program__attach(program));
     REQUIRE(link == nullptr);
-    REQUIRE(libbpf_get_error(link) == -EINVAL);
+    REQUIRE(libbpf_get_error(link.get()) == -EINVAL);
 
     // Load the program.
     REQUIRE(bpf_object__load(object) == 0);
 
     // Attach should now succeed.
-    link = bpf_program__attach(program);
+    link.reset(bpf_program__attach(program));
     REQUIRE(link != nullptr);
 
     // The maps should now have FDs.
@@ -2416,7 +2426,7 @@ TEST_CASE("bpf_object__load with .o", "[libbpf]")
     map = bpf_object__next_map(object, map);
     REQUIRE(map == nullptr);
 
-    REQUIRE(bpf_link__destroy(link) == 0);
+    REQUIRE(bpf_link__destroy(link.release()) == 0);
     bpf_object__close(object);
 }
 
@@ -2695,3 +2705,41 @@ _test_nested_maps(bpf_map_type map_type)
 
 TEST_CASE("array_map_of_maps", "[libbpf]") { _test_nested_maps(BPF_MAP_TYPE_ARRAY_OF_MAPS); }
 TEST_CASE("hash_map_of_maps", "[libbpf]") { _test_nested_maps(BPF_MAP_TYPE_HASH_OF_MAPS); }
+
+TEST_CASE("libbpf_load_stress", "[libbpf]")
+{
+    _test_helper_libbpf test_helper;
+
+    std::vector<std::jthread> threads;
+    // Schedule 4 threads per CPU to force contention.
+    for (size_t i = 0; i < static_cast<size_t>(ebpf_get_cpu_count()) * 4; i++) {
+        // Initialize thread object with lambda plus stop token
+        threads.emplace_back([i](std::stop_token stop_token) {
+            while (!stop_token.stop_requested()) {
+                struct bpf_object* object = bpf_object__open("droppacket_um.dll");
+                if (!object) {
+                    break;
+                }
+                // Enumerate maps and programs.
+                bpf_program* program;
+                bpf_object__for_each_program(program, object) {}
+                bpf_map* map;
+                bpf_object__for_each_map(map, object) {}
+                bpf_object__close(object);
+            }
+        });
+    }
+
+    // Wait for 10 seconds.
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+
+    // Stop all threads.
+    for (auto& thread : threads) {
+        thread.request_stop();
+    }
+
+    // Wait for all threads to stop.
+    for (auto& thread : threads) {
+        thread.join();
+    }
+}

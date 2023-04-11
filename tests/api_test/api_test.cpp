@@ -13,6 +13,7 @@
 #include "program_helper.h"
 #include "service_helper.h"
 #include "socket_helper.h"
+#include "watchdog.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -23,6 +24,8 @@
 #include <ntsecapi.h>
 #include <thread>
 #include <vector>
+
+CATCH_REGISTER_LISTENER(_watchdog)
 
 #define SAMPLE_PATH ""
 
@@ -129,8 +132,9 @@ _test_program_load(
         execution_type = EBPF_EXECUTION_JIT;
     }
     REQUIRE(program_execution_type == execution_type);
-    if (execution_type != EBPF_EXECUTION_NATIVE)
+    if (execution_type != EBPF_EXECUTION_NATIVE) {
         REQUIRE(strcmp(program_file_name, file_name) == 0);
+    }
 
     // Next program should not be present.
     uint32_t previous_id = next_id;
@@ -357,7 +361,8 @@ perform_socket_bind(const uint16_t test_port, bool expect_success = true)
     REQUIRE(_socket != INVALID_SOCKET);
     uint32_t ipv6_option = 0;
     REQUIRE(
-        setsockopt(_socket, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char*>(&ipv6_option), sizeof(ULONG)) ==
+        setsockopt(
+            _socket, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<const char*>(&ipv6_option), sizeof(unsigned long)) ==
         0);
     SOCKADDR_STORAGE sock_addr;
     sock_addr.ss_family = AF_INET6;
@@ -626,24 +631,28 @@ TEST_CASE("bindmonitor_tailcall_native_test", "[native_tests]")
 
     // Test map-in-maps.
     struct bpf_map* outer_map = bpf_object__find_map_by_name(object, "dummy_outer_map");
-    if (outer_map == nullptr)
+    if (outer_map == nullptr) {
         cleanup();
+    }
     REQUIRE(outer_map != nullptr);
 
     int outer_map_fd = bpf_map__fd(outer_map);
-    if (outer_map_fd <= 0)
+    if (outer_map_fd <= 0) {
         cleanup();
+    }
     REQUIRE(outer_map_fd > 0);
 
     // Test map-in-maps.
     struct bpf_map* outer_idx_map = bpf_object__find_map_by_name(object, "dummy_outer_idx_map");
-    if (outer_idx_map == nullptr)
+    if (outer_idx_map == nullptr) {
         cleanup();
+    }
     REQUIRE(outer_idx_map != nullptr);
 
     int outer_idx_map_fd = bpf_map__fd(outer_idx_map);
-    if (outer_idx_map_fd <= 0)
+    if (outer_idx_map_fd <= 0) {
         cleanup();
+    }
     REQUIRE(outer_idx_map_fd > 0);
 
     // Clean up tail calls.
@@ -680,8 +689,8 @@ TEST_CASE("bpf_get_current_pid_tgid", "[helpers]")
     REQUIRE(bpf_map_lookup_elem(bpf_map__fd(map), &key, &value) == 0);
 
     // Verify PID/TID values.
-    DWORD pid = GetCurrentProcessId();
-    DWORD tid = GetCurrentThreadId();
+    unsigned long pid = GetCurrentProcessId();
+    unsigned long tid = GetCurrentThreadId();
     REQUIRE(pid == value.context_pid);
     REQUIRE(pid == value.current_pid);
     REQUIRE(tid == value.current_tid);

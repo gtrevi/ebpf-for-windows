@@ -44,6 +44,7 @@ typedef struct _wfp_ale_layer_fields
     uint16_t compartment_id_field;
     uint16_t interface_luid_field;
     uint16_t user_id_field;
+    uint16_t flags_field;
 } wfp_ale_layer_fields_t;
 
 typedef struct _net_ebpf_extension_wfp_filter_parameters
@@ -196,6 +197,10 @@ net_ebpf_extension_add_wfp_filters(
  */
 void
 net_ebpf_extension_delete_wfp_filters(uint32_t filter_count, _Frees_ptr_ _In_count_(filter_count) uint64_t* filter_ids);
+
+// eBPF WFP Provider GUID.
+// ddb851f5-841a-4b77-8a46-bb7063e9f162
+DEFINE_GUID(EBPF_WFP_PROVIDER, 0xddb851f5, 0x841a, 0x4b77, 0x8a, 0x46, 0xbb, 0x70, 0x63, 0xe9, 0xf1, 0x62);
 
 // Default eBPF WFP Sublayer GUID.
 // 7c7b3fb9-3331-436a-98e1-b901df457fff

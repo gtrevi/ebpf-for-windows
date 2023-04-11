@@ -13,7 +13,7 @@
 #define metadata_table map_in_map_v2##_metadata_table
 extern metadata_table_t metadata_table;
 
-BOOL APIENTRY
+bool APIENTRY
 DllMain(_In_ HMODULE hModule, unsigned int ul_reason_for_call, _In_ void* lpReserved)
 {
     UNREFERENCED_PARAMETER(hModule);
@@ -222,7 +222,7 @@ static void
 _get_version(_Out_ bpf2c_version_t* version)
 {
     version->major = 0;
-    version->minor = 6;
+    version->minor = 7;
     version->revision = 0;
 }
 

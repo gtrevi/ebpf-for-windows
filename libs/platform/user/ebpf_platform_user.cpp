@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
 
+#include "ebpf_fault_injection.h"
 #include "ebpf_leak_detector.h"
-#include "ebpf_low_memory_test.h"
 #include "ebpf_symbol_decoder.h"
 #include "ebpf_utilities.h"
 
@@ -25,21 +25,25 @@ bool _ebpf_platform_code_integrity_enabled = false;
 // Permit the test to simulate non-preemptible execution.
 bool _ebpf_platform_is_preemptible = true;
 
+// Global variable to track the number of times ebpf_platform has been
+// initialized. In user mode it is possible for ebpf_platform_{initiate|terminate}
+// to be called multiple times.
+int32_t _ebpf_platform_initiate_count = 0;
+
 extern "C" bool ebpf_fuzzing_enabled = false;
 extern "C" size_t ebpf_fuzzing_memory_limit = MAXSIZE_T;
 
-std::unique_ptr<ebpf_low_memory_test_t> _ebpf_low_memory_test_ptr;
 ebpf_leak_detector_ptr _ebpf_leak_detector_ptr;
 
 /**
- * @brief Environment variable to enable low memory testing.
+ * @brief Environment variable to enable fault injection testing.
  *
  */
-#define EBPF_LOW_MEMORY_SIMULATION_ENVIRONMENT_VARIABLE_NAME "EBPF_LOW_MEMORY_SIMULATION"
+#define EBPF_FAULT_INJECTION_SIMULATION_ENVIRONMENT_VARIABLE_NAME "EBPF_FAULT_INJECTION_SIMULATION"
 #define EBPF_MEMORY_LEAK_DETECTION_ENVIRONMENT_VARIABLE_NAME "EBPF_MEMORY_LEAK_DETECTION"
 
 // Thread pool related globals.
-static TP_CALLBACK_ENVIRON _callback_environment;
+static TP_CALLBACK_ENVIRON _callback_environment{};
 static PTP_POOL _pool = nullptr;
 static PTP_CLEANUP_GROUP _cleanup_group = nullptr;
 
@@ -57,7 +61,14 @@ _initialize_thread_pool()
     bool cleanup_group_created = false;
     bool return_value;
 
+    // Initialize a callback environment for the thread pool.
     InitializeThreadpoolEnvironment(&_callback_environment);
+
+    // CreateThreadpoolCleanupGroup can return nullptr.
+    if (ebpf_fault_injection_inject_fault()) {
+        return EBPF_NO_MEMORY;
+    }
+
     _pool = CreateThreadpool(nullptr);
     if (_pool == nullptr) {
         result = win32_error_code_to_ebpf_result(GetLastError());
@@ -101,9 +112,13 @@ _clean_up_thread_pool()
         return;
     }
 
-    CloseThreadpoolCleanupGroupMembers(_cleanup_group, false, nullptr);
-    CloseThreadpoolCleanupGroup(_cleanup_group);
+    if (_cleanup_group) {
+        CloseThreadpoolCleanupGroupMembers(_cleanup_group, false, nullptr);
+        CloseThreadpoolCleanupGroup(_cleanup_group);
+        _cleanup_group = nullptr;
+    }
     CloseThreadpool(_pool);
+    _pool = nullptr;
 }
 
 class _ebpf_emulated_dpc;
@@ -296,18 +311,25 @@ _get_environment_variable_as_size_t(const std::string& name)
 _Must_inspect_result_ ebpf_result_t
 ebpf_platform_initiate()
 {
+    int32_t count = ebpf_interlocked_increment_int32(&_ebpf_platform_initiate_count);
+    if (count > 1) {
+        // Platform library already initialized, return.
+        return EBPF_SUCCESS;
+    }
 
     try {
         _ebpf_platform_maximum_group_count = GetMaximumProcessorGroupCount();
         _ebpf_platform_maximum_processor_count = GetMaximumProcessorCount(ALL_PROCESSOR_GROUPS);
-        auto low_memory_stack_depth =
-            _get_environment_variable_as_size_t(EBPF_LOW_MEMORY_SIMULATION_ENVIRONMENT_VARIABLE_NAME);
+        auto fault_injection_stack_depth =
+            _get_environment_variable_as_size_t(EBPF_FAULT_INJECTION_SIMULATION_ENVIRONMENT_VARIABLE_NAME);
         auto leak_detector = _get_environment_variable_as_bool(EBPF_MEMORY_LEAK_DETECTION_ENVIRONMENT_VARIABLE_NAME);
-        if (low_memory_stack_depth || leak_detector) {
+        if (fault_injection_stack_depth || leak_detector) {
             _ebpf_symbol_decoder_initialize();
         }
-        if (low_memory_stack_depth && !_ebpf_low_memory_test_ptr) {
-            _ebpf_low_memory_test_ptr = std::make_unique<ebpf_low_memory_test_t>(low_memory_stack_depth);
+        if (fault_injection_stack_depth && !ebpf_fault_injection_is_enabled()) {
+            if (ebpf_fault_injection_initialize(fault_injection_stack_depth) != EBPF_SUCCESS) {
+                return EBPF_NO_MEMORY;
+            }
             // Set flag to remove some asserts that fire from incorrect client behavior.
             ebpf_fuzzing_enabled = true;
         }
@@ -336,6 +358,11 @@ ebpf_platform_initiate()
 void
 ebpf_platform_terminate()
 {
+    int32_t count = ebpf_interlocked_decrement_int32(&_ebpf_platform_initiate_count);
+    if (count != 0) {
+        return;
+    }
+
     _clean_up_thread_pool();
     _ebpf_emulated_dpcs.resize(0);
     if (_ebpf_leak_detector_ptr) {
@@ -358,12 +385,6 @@ ebpf_get_code_integrity_state(_Out_ ebpf_code_integrity_state_t* state)
     EBPF_RETURN_RESULT(EBPF_SUCCESS);
 }
 
-bool
-ebpf_low_memory_test_in_progress()
-{
-    return _ebpf_low_memory_test_ptr != nullptr;
-}
-
 __drv_allocatesMem(Mem) _Must_inspect_result_ _Ret_writes_maybenull_(size) void* ebpf_allocate(size_t size)
 {
     ebpf_assert(size);
@@ -371,20 +392,29 @@ __drv_allocatesMem(Mem) _Must_inspect_result_ _Ret_writes_maybenull_(size) void*
         return nullptr;
     }
 
-    if (_ebpf_low_memory_test_ptr && _ebpf_low_memory_test_ptr->fail_stack_allocation()) {
+    if (ebpf_fault_injection_inject_fault()) {
         return nullptr;
     }
 
     void* memory;
     memory = calloc(size, 1);
-    if (memory != nullptr)
+    if (memory != nullptr) {
         memset(memory, 0, size);
+    }
 
     if (memory && _ebpf_leak_detector_ptr) {
         _ebpf_leak_detector_ptr->register_allocation(reinterpret_cast<uintptr_t>(memory), size);
     }
 
     return memory;
+}
+
+__drv_allocatesMem(Mem) _Must_inspect_result_
+    _Ret_writes_maybenull_(size) void* ebpf_allocate_with_tag(size_t size, uint32_t tag)
+{
+    UNREFERENCED_PARAMETER(tag);
+
+    return ebpf_allocate(size);
 }
 
 __drv_allocatesMem(Mem) _Must_inspect_result_ _Ret_writes_maybenull_(new_size) void* ebpf_reallocate(
@@ -395,13 +425,14 @@ __drv_allocatesMem(Mem) _Must_inspect_result_ _Ret_writes_maybenull_(new_size) v
         return nullptr;
     }
 
-    if (_ebpf_low_memory_test_ptr && _ebpf_low_memory_test_ptr->fail_stack_allocation()) {
+    if (ebpf_fault_injection_inject_fault()) {
         return nullptr;
     }
 
     void* p = realloc(memory, new_size);
-    if (p && (new_size > old_size))
+    if (p && (new_size > old_size)) {
         memset(((char*)p) + old_size, 0, new_size - old_size);
+    }
 
     if (_ebpf_leak_detector_ptr) {
         _ebpf_leak_detector_ptr->unregister_allocation(reinterpret_cast<uintptr_t>(memory));
@@ -409,6 +440,14 @@ __drv_allocatesMem(Mem) _Must_inspect_result_ _Ret_writes_maybenull_(new_size) v
     }
 
     return p;
+}
+
+__drv_allocatesMem(Mem) _Must_inspect_result_ _Ret_writes_maybenull_(new_size) void* ebpf_reallocate_with_tag(
+    _In_ _Post_invalid_ void* memory, size_t old_size, size_t new_size, uint32_t tag)
+{
+    UNREFERENCED_PARAMETER(tag);
+
+    return ebpf_reallocate(memory, old_size, new_size);
 }
 
 void
@@ -427,7 +466,7 @@ __drv_allocatesMem(Mem) _Must_inspect_result_
         return nullptr;
     }
 
-    if (_ebpf_low_memory_test_ptr && _ebpf_low_memory_test_ptr->fail_stack_allocation()) {
+    if (ebpf_fault_injection_inject_fault()) {
         return nullptr;
     }
 
@@ -436,6 +475,14 @@ __drv_allocatesMem(Mem) _Must_inspect_result_
         memset(memory, 0, size);
     }
     return memory;
+}
+
+__drv_allocatesMem(Mem) _Must_inspect_result_
+    _Ret_writes_maybenull_(size) void* ebpf_allocate_cache_aligned_with_tag(size_t size, uint32_t tag)
+{
+    UNREFERENCED_PARAMETER(tag);
+
+    return ebpf_allocate_cache_aligned(size);
 }
 
 void
@@ -557,7 +604,8 @@ ebpf_allocate_ring_buffer_memory(size_t length)
     // Create a pagefile-backed section for the buffer.
     //
 
-    section = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, static_cast<DWORD>(length), nullptr);
+    section = CreateFileMapping(
+        INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, static_cast<unsigned long>(length), nullptr);
     if (section == nullptr) {
         EBPF_LOG_WIN32_API_FAILURE(EBPF_TRACELOG_KEYWORD_BASE, CreateFileMapping);
         goto Exit;
@@ -657,8 +705,8 @@ _Must_inspect_result_ ebpf_result_t
 ebpf_protect_memory(_In_ const ebpf_memory_descriptor_t* memory_descriptor, ebpf_page_protection_t protection)
 {
     EBPF_LOG_ENTRY();
-    ULONG mm_protection_state = 0;
-    ULONG old_mm_protection_state = 0;
+    unsigned long mm_protection_state = 0;
+    unsigned long old_mm_protection_state = 0;
     switch (protection) {
     case EBPF_PAGE_PROTECT_READ_ONLY:
         mm_protection_state = PAGE_READONLY;
@@ -768,7 +816,7 @@ ebpf_set_current_thread_affinity(uintptr_t new_thread_affinity_mask, _Out_ uintp
 {
     uintptr_t old_mask = SetThreadAffinityMask(GetCurrentThread(), new_thread_affinity_mask);
     if (old_mask == 0) {
-        DWORD error = GetLastError();
+        unsigned long error = GetLastError();
         ebpf_assert(error != ERROR_SUCCESS);
         return EBPF_OPERATION_NOT_SUPPORTED;
     } else {
@@ -898,6 +946,8 @@ ebpf_allocate_preemptible_work_item(
         return EBPF_NO_MEMORY;
     }
 
+    // It is required to use the InitializeThreadpoolEnvironment function to
+    // initialize the _callback_environment structure before calling CreateThreadpoolWork.
     (*work_item)->work = CreateThreadpoolWork(_ebpf_preemptible_routine, *work_item, &_callback_environment);
     if ((*work_item)->work == nullptr) {
         result = win32_error_code_to_ebpf_result(GetLastError());
@@ -927,8 +977,9 @@ _ebpf_timer_callback(_Inout_ TP_CALLBACK_INSTANCE* instance, _Inout_opt_ void* c
     ebpf_timer_work_item_t* timer_work_item = reinterpret_cast<ebpf_timer_work_item_t*>(context);
     UNREFERENCED_PARAMETER(instance);
     UNREFERENCED_PARAMETER(timer);
-    if (timer_work_item)
+    if (timer_work_item) {
         timer_work_item->work_item_routine(timer_work_item->work_item_context);
+    }
 }
 
 _Must_inspect_result_ ebpf_result_t
@@ -939,12 +990,14 @@ ebpf_allocate_timer_work_item(
 {
     *work_item = (ebpf_timer_work_item_t*)ebpf_allocate(sizeof(ebpf_timer_work_item_t));
 
-    if (*work_item == nullptr)
+    if (*work_item == nullptr) {
         goto Error;
+    }
 
     (*work_item)->threadpool_timer = CreateThreadpoolTimer(_ebpf_timer_callback, *work_item, nullptr);
-    if ((*work_item)->threadpool_timer == nullptr)
+    if ((*work_item)->threadpool_timer == nullptr) {
         goto Error;
+    }
 
     (*work_item)->work_item_routine = work_item_routine;
     (*work_item)->work_item_context = work_item_context;
@@ -953,8 +1006,9 @@ ebpf_allocate_timer_work_item(
 
 Error:
     if (*work_item != nullptr) {
-        if ((*work_item)->threadpool_timer != nullptr)
+        if ((*work_item)->threadpool_timer != nullptr) {
             CloseThreadpoolTimer((*work_item)->threadpool_timer);
+        }
 
         ebpf_free(*work_item);
     }
@@ -980,8 +1034,9 @@ ebpf_schedule_timer_work_item(_Inout_ ebpf_timer_work_item_t* timer, uint32_t el
 void
 ebpf_free_timer_work_item(_Frees_ptr_opt_ ebpf_timer_work_item_t* work_item)
 {
-    if (!work_item)
+    if (!work_item) {
         return;
+    }
 
     WaitForThreadpoolTimerCallbacks(work_item->threadpool_timer, true);
     CloseThreadpoolTimer(work_item->threadpool_timer);
@@ -994,10 +1049,11 @@ ebpf_free_timer_work_item(_Frees_ptr_opt_ ebpf_timer_work_item_t* work_item)
 _Must_inspect_result_ ebpf_result_t
 ebpf_guid_create(_Out_ GUID* new_guid)
 {
-    if (UuidCreate(new_guid) == RPC_S_OK)
+    if (UuidCreate(new_guid) == RPC_S_OK) {
         return EBPF_SUCCESS;
-    else
+    } else {
         return EBPF_OPERATION_NOT_SUPPORTED;
+    }
 }
 
 int32_t
@@ -1022,10 +1078,12 @@ ebpf_access_check(
 {
     ebpf_result_t result;
     HANDLE token = INVALID_HANDLE_VALUE;
+
+    // Using BOOL to pass "AccessCheck" defined in Windows "securitybaseapi.h" file
     BOOL access_status = FALSE;
-    DWORD granted_access;
+    unsigned long granted_access;
     PRIVILEGE_SET privilege_set;
-    DWORD privilege_set_size = sizeof(privilege_set);
+    unsigned long privilege_set_size = sizeof(privilege_set);
     bool is_impersonating = false;
 
     if (!ImpersonateSelf(SecurityImpersonation)) {
@@ -1047,7 +1105,7 @@ ebpf_access_check(
             &privilege_set_size,
             &granted_access,
             &access_status)) {
-        DWORD err = GetLastError();
+        unsigned long err = GetLastError();
         printf("LastError: %d\n", err);
         result = EBPF_ACCESS_DENIED;
     } else {
@@ -1055,11 +1113,13 @@ ebpf_access_check(
     }
 
 Done:
-    if (token != INVALID_HANDLE_VALUE)
+    if (token != INVALID_HANDLE_VALUE) {
         CloseHandle(token);
+    }
 
-    if (is_impersonating)
+    if (is_impersonating) {
         RevertToSelf();
+    }
     return result;
 }
 
@@ -1069,8 +1129,8 @@ ebpf_validate_security_descriptor(
 {
     ebpf_result_t result;
     SECURITY_DESCRIPTOR_CONTROL security_descriptor_control;
-    DWORD version;
-    DWORD length;
+    unsigned long version;
+    unsigned long length;
     if (!IsValidSecurityDescriptor(const_cast<_SECURITY_DESCRIPTOR*>(security_descriptor))) {
         result = EBPF_INVALID_ARGUMENT;
         goto Done;
@@ -1155,7 +1215,7 @@ _IRQL_requires_max_(PASSIVE_LEVEL) _Must_inspect_result_ ebpf_result_t
     uint32_t size = 0;
     HANDLE thread_token_handle = GetCurrentThreadEffectiveToken();
 
-    bool result = GetTokenInformation(thread_token_handle, TokenGroupsAndPrivileges, nullptr, 0, (PDWORD)&size);
+    bool result = GetTokenInformation(thread_token_handle, TokenGroupsAndPrivileges, nullptr, 0, (unsigned long*)&size);
     error = GetLastError();
     if (error != ERROR_INSUFFICIENT_BUFFER) {
         EBPF_LOG_WIN32_API_FAILURE(EBPF_TRACELOG_KEYWORD_BASE, GetTokenInformation);
@@ -1167,7 +1227,8 @@ _IRQL_requires_max_(PASSIVE_LEVEL) _Must_inspect_result_ ebpf_result_t
         return EBPF_NO_MEMORY;
     }
 
-    result = GetTokenInformation(thread_token_handle, TokenGroupsAndPrivileges, privileges, size, (PDWORD)&size);
+    result =
+        GetTokenInformation(thread_token_handle, TokenGroupsAndPrivileges, privileges, size, (unsigned long*)&size);
     if (result == false) {
         EBPF_LOG_WIN32_API_FAILURE(EBPF_TRACELOG_KEYWORD_BASE, GetTokenInformation);
         return_value = win32_error_code_to_ebpf_result(GetLastError());
@@ -1196,4 +1257,77 @@ bool
 ebpf_should_yield_processor()
 {
     return false;
+}
+
+void
+ebpf_get_execution_context_state(_Out_ ebpf_execution_context_state_t* state)
+{
+    if (ebpf_non_preemptible) {
+        state->current_irql = DISPATCH_LEVEL;
+        state->id.cpu = ebpf_get_current_cpu();
+    } else {
+        state->current_irql = PASSIVE_LEVEL;
+        state->id.thread = GetCurrentThreadId();
+    }
+}
+
+uint8_t
+ebpf_get_current_irql()
+{
+    return ebpf_non_preemptible ? DISPATCH_LEVEL : PASSIVE_LEVEL;
+}
+
+typedef struct _ebpf_semaphore
+{
+    HANDLE semaphore;
+} ebpf_semaphore_t;
+
+_Must_inspect_result_ ebpf_result_t
+ebpf_semaphore_create(_Outptr_ ebpf_semaphore_t** semaphore, int initial_count, int maximum_count)
+{
+    *semaphore = (ebpf_semaphore_t*)ebpf_allocate(sizeof(ebpf_semaphore_t));
+    if (*semaphore == nullptr) {
+        return EBPF_NO_MEMORY;
+    }
+
+    (*semaphore)->semaphore = CreateSemaphore(nullptr, initial_count, maximum_count, nullptr);
+    if ((*semaphore)->semaphore == INVALID_HANDLE_VALUE) {
+        ebpf_free(*semaphore);
+        *semaphore = nullptr;
+        return EBPF_NO_MEMORY;
+    }
+    return EBPF_SUCCESS;
+}
+
+void
+ebpf_semaphore_destroy(_Frees_ptr_opt_ ebpf_semaphore_t* semaphore)
+{
+    if (semaphore) {
+        ::CloseHandle(semaphore->semaphore);
+        ebpf_free(semaphore);
+    }
+}
+
+void
+ebpf_semaphore_wait(_In_ ebpf_semaphore_t* semaphore)
+{
+    WaitForSingleObject(semaphore->semaphore, INFINITE);
+}
+
+void
+ebpf_semaphore_release(_In_ ebpf_semaphore_t* semaphore)
+{
+    ReleaseSemaphore(semaphore->semaphore, 1, nullptr);
+}
+
+void
+ebpf_enter_critical_region()
+{
+    // This is a no-op for the user mode implementation.
+}
+
+void
+ebpf_leave_critical_region()
+{
+    // This is a no-op for the user mode implementation.
 }

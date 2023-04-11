@@ -19,11 +19,10 @@
 
 #define SAMPLE_EBPF_EXTENSION_NPI_PROVIDER_VERSION 0
 
+#define SAMPLE_PID_TGID_VALUE 9999
+
 // f788ef4a-207d-4dc3-85cf-0f2ea107213c
 DEFINE_GUID(EBPF_PROGRAM_TYPE_SAMPLE, 0xf788ef4a, 0x207d, 0x4dc3, 0x85, 0xcf, 0x0f, 0x2e, 0xa1, 0x07, 0x21, 0x3c);
-
-typedef ebpf_result_t (*ebpf_get_program_context_t)(_Outptr_ void** context);
-static ebpf_get_program_context_t _sample_ebpf_ext_get_program_context = NULL;
 
 // Sample Extension helper function addresses table.
 static uint64_t
@@ -256,9 +255,9 @@ _sample_ebpf_extension_program_info_provider_attach_client(
 {
     NTSTATUS status = STATUS_SUCCESS;
     sample_ebpf_extension_program_info_client_t* program_info_client = NULL;
-    ebpf_extension_dispatch_table_t* client_dispatch_table;
 
     UNREFERENCED_PARAMETER(provider_context);
+    UNREFERENCED_PARAMETER(client_dispatch);
     UNREFERENCED_PARAMETER(client_binding_context);
 
     if ((provider_binding_context == NULL) || (provider_dispatch == NULL)) {
@@ -268,12 +267,6 @@ _sample_ebpf_extension_program_info_provider_attach_client(
 
     *provider_binding_context = NULL;
     *provider_dispatch = NULL;
-
-    client_dispatch_table = (ebpf_extension_dispatch_table_t*)client_dispatch;
-    if (client_dispatch_table == NULL) {
-        status = STATUS_INVALID_PARAMETER;
-        goto Exit;
-    }
 
     program_info_client = (sample_ebpf_extension_program_info_client_t*)ebpf_allocate(
         sizeof(sample_ebpf_extension_program_info_client_t));
@@ -286,14 +279,13 @@ _sample_ebpf_extension_program_info_provider_attach_client(
     program_info_client->nmr_binding_handle = nmr_binding_handle;
     program_info_client->client_module_id = client_registration_instance->ModuleId->Guid;
 
-    _sample_ebpf_ext_get_program_context = (ebpf_get_program_context_t)client_dispatch_table->function[0];
-
 Exit:
     if (NT_SUCCESS(status)) {
         *provider_binding_context = program_info_client;
         program_info_client = NULL;
-    } else
+    } else {
         ebpf_free(program_info_client);
+    }
     return status;
 }
 
@@ -303,7 +295,6 @@ _sample_ebpf_extension_program_info_provider_detach_client(_In_ const void* prov
     NTSTATUS status = STATUS_SUCCESS;
 
     UNREFERENCED_PARAMETER(provider_binding_context);
-    _sample_ebpf_ext_get_program_context = NULL;
 
     return status;
 }
@@ -320,8 +311,9 @@ sample_ebpf_extension_program_info_provider_unregister()
     sample_ebpf_extension_program_info_provider_t* provider_context =
         &_sample_ebpf_extension_program_info_provider_context;
     NTSTATUS status = NmrDeregisterProvider(provider_context->nmr_provider_handle);
-    if (status == STATUS_PENDING)
+    if (status == STATUS_PENDING) {
         NmrWaitForProviderDeregisterComplete(provider_context->nmr_provider_handle);
+    }
 }
 
 static NTSTATUS
@@ -336,7 +328,7 @@ _sample_ebpf_extension_update_store_entries()
         (GUID*)&EBPF_ATTACH_TYPE_SAMPLE,
         BPF_PROG_TYPE_SAMPLE,
         BPF_ATTACH_TYPE_SAMPLE};
-    status = ebpf_store_update_section_information(&section_info, 1);
+    status = _ebpf_store_update_section_information(&section_info, 1);
     if (!NT_SUCCESS(status)) {
         return status;
     }
@@ -349,7 +341,7 @@ _sample_ebpf_extension_update_store_entries()
     program_data = (ebpf_program_data_t*)extension_data->data;
     program_data->program_info->program_type_descriptor.program_type = EBPF_PROGRAM_TYPE_SAMPLE;
 
-    status = ebpf_store_update_program_information(program_data->program_info, 1);
+    status = _ebpf_store_update_program_information(program_data->program_info, 1);
 
     return status;
 }
@@ -380,12 +372,14 @@ sample_ebpf_extension_program_info_provider_register()
         &_sample_ebpf_extension_program_info_provider_characteristics,
         local_provider_context,
         &local_provider_context->nmr_provider_handle);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         goto Exit;
+    }
 
 Exit:
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         sample_ebpf_extension_program_info_provider_unregister();
+    }
 
     return status;
 }
@@ -449,8 +443,9 @@ Exit:
     if (NT_SUCCESS(status)) {
         *provider_binding_context = hook_client;
         hook_client = NULL;
-    } else
+    } else {
         ebpf_free(hook_client);
+    }
 
     return status;
 }
@@ -488,9 +483,10 @@ sample_ebpf_extension_hook_provider_unregister()
     sample_ebpf_extension_hook_provider_t* provider_context = &_sample_ebpf_extension_hook_provider_context;
 
     NTSTATUS status = NmrDeregisterProvider(provider_context->nmr_provider_handle);
-    if (status == STATUS_PENDING)
+    if (status == STATUS_PENDING) {
         // Wait for clients to detach.
         NmrWaitForProviderDeregisterComplete(provider_context->nmr_provider_handle);
+    }
 }
 
 NTSTATUS
@@ -509,12 +505,14 @@ sample_ebpf_extension_hook_provider_register()
         &_sample_ebpf_extension_hook_provider_characteristics,
         local_provider_context,
         &local_provider_context->nmr_provider_handle);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         goto Exit;
+    }
 
 Exit:
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         sample_ebpf_extension_hook_provider_unregister();
+    }
 
     return status;
 }
@@ -591,11 +589,7 @@ Exit:
 static uint64_t
 _sample_get_pid_tgid()
 {
-    sample_program_context_t* context = NULL;
-    _sample_ebpf_ext_get_program_context((void**)&context);
-    ASSERT(context != NULL);
-
-    return context->pid_tgid;
+    return SAMPLE_PID_TGID_VALUE;
 }
 
 // Helper Function Definitions.
@@ -637,8 +631,9 @@ _sample_ebpf_extension_replace(
 
     dest = (char*)buffer + position;
     while (dest != end) {
-        if (*source == '\0')
+        if (*source == '\0') {
             break;
+        }
         *dest++ = *source++;
     }
 

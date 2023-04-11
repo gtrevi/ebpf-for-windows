@@ -9,7 +9,6 @@
  */
 
 #include "ebpf_core.h"
-#include "ebpf_object.h"
 
 #include <wdf.h>
 
@@ -49,7 +48,7 @@ _ebpf_driver_io_device_control(
     _In_ WDFREQUEST request,
     size_t output_buffer_length,
     size_t input_buffer_length,
-    ULONG io_control_code);
+    unsigned long io_control_code);
 
 static _Function_class_(EVT_WDF_DRIVER_UNLOAD) _IRQL_requires_same_
     _IRQL_requires_max_(PASSIVE_LEVEL) void _ebpf_driver_unload(_In_ WDFDRIVER driver_object)
@@ -203,10 +202,7 @@ static void
 _ebpf_driver_file_close(WDFFILEOBJECT wdf_file_object)
 {
     FILE_OBJECT* file_object = WdfFileObjectWdmGetFileObject(wdf_file_object);
-    ebpf_base_object_t* base_object = file_object->FsContext2;
-    if (base_object != NULL) {
-        base_object->release_reference(base_object);
-    }
+    ebpf_core_close_context(file_object->FsContext2);
 }
 
 static void
@@ -233,7 +229,7 @@ _ebpf_driver_io_device_control(
     _In_ WDFREQUEST request,
     size_t output_buffer_length,
     size_t input_buffer_length,
-    ULONG io_control_code)
+    unsigned long io_control_code)
 {
     NTSTATUS status = STATUS_SUCCESS;
     WDFDEVICE device;

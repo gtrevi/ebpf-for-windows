@@ -12,21 +12,23 @@
 // The per-CPU state is protected by a single per-CPU lock.
 //
 // ebpf_epoch_enter:
-// If preemptible, the thread is affinitized to the current CPU (to prevent it from moving between CPUs).
-// Either the per-CPU or per-thread ebpf_epoch_state_t is located.
-// The ebpf_epoch_state_t is marked as active and the current epoch is recorded and last_used_time is set to now.
+// If the thread is preemptible, it blocks waiting for the semaphore (to ensure that the thread entry table has an
+// available entry). If the thread is not preemptible, it is guaranteed that the thread entry table has an available
+// entry. The thread entry table is a fixed size hash table based on the thread ID. The current epoch is read and stored
+// in the thread entry table.
 //
 // ebpf_epoch_exit:
 // First:
-// Either the per-CPU or per-thread ebpf_epoch_state_t is located.
-// The ebpf_epoch_state_t is marked as inactive and the current epoch is recorded and last_used_time is set to now.
-// If preemptible, the thread is affinity is restored.
+// The entry is set to zero to mark it as freed.
 //
 // Second:
 // Any entries in the per CPU free-list with epoch older than _ebpf_release_epoch are freed.
 //
 // Third:
 // If the free-list still contains entries, the _ebpf_flush_timer is set (if not already set).
+//
+// Fourth:
+// If the thread is preemptible the semaphore is released.
 //
 // ebpf_flush:
 // Compute the global lowest epoch across all active CPU and thread ebpf_epoch_state_t and set _ebpf_release_epoch.
@@ -40,6 +42,13 @@
 // Stale flag:
 // The stale flag is set if the timer runs and the ebpf_epoch_cpu_entry_t has entries in its free list.
 // If the stale flag is already set, then the per-CPU stale_worker is scheduled.
+//
+// Thread entry table:
+// The thread entry table is a fixed size per-CPU hash table for tracking per-thread ebpf_epoch_state_t. The hash is
+// based on the thread ID. The thread entry table is protected by a semaphore that limits the number of threads
+// that can be active in the epoch at any one time. If a thread attempts to enter the epoch and the semaphore
+// count is 0, then the thread blocks until a thread exits the epoch, which ensures that the thread entry table
+// has an available entry for the thread to use.
 
 // Delay after the _ebpf_flush_timer is set before it runs.
 #define EBPF_EPOCH_FLUSH_DELAY_IN_MICROSECONDS 1000
@@ -54,33 +63,34 @@
 
 typedef struct _ebpf_epoch_state
 {
-    int64_t epoch;           // The highest epoch seen by this epoch state.
-    bool active : 1;         // Currently within an entry/exit block.
-    bool timer_armed : 1;    // This state has requested the global timer.
-    bool stale : 1;          // This state has entries that haven't been freed.
-    bool timer_disabled : 1; // Prevent re-arming the timer during shutdown.
+    int64_t epoch; // The highest epoch seen by this epoch state.
 } ebpf_epoch_state_t;
+
+#define EBPF_EPOCH_THREAD_TABLE_SIZE \
+    (EBPF_CACHE_LINE_SIZE / sizeof(ebpf_epoch_state_t)) // Number of entries in the thread table.
+
+// Number of reserved entries in the thread table.
+// One for the current thread running at DISPATCH_LEVEL.
+#define EBPF_EPOCH_THREAD_TABLE_RESERVED_COUNT 1
 
 // Table to track per CPU state.
 // This table must fit into a multiple of EBPF_CACHE_LINE_SIZE.
-typedef struct _ebpf_epoch_cpu_entry
+#pragma warning(disable : 4324) // Structure was padded due to alignment specifier.
+typedef __declspec(align(EBPF_CACHE_LINE_SIZE)) struct _ebpf_epoch_cpu_entry
 {
+    _Guarded_by_(lock) ebpf_epoch_state_t
+        epoch_table[EBPF_EPOCH_THREAD_TABLE_SIZE]; // Epochs on this CPU. If zero, then it is not active.
     ebpf_lock_t lock;
-    _Requires_lock_held_(lock) ebpf_epoch_state_t epoch_state;                 // Per-CPU epoch state.
-    _Requires_lock_held_(lock) ebpf_list_entry_t free_list;                    // Per-CPU free list.
-    _Requires_lock_held_(lock) ebpf_hash_table_t* thread_table;                // Per-CPU thread table.
-    _Requires_lock_held_(lock) ebpf_non_preemptible_work_item_t* stale_worker; // Per-CPU stale worker DPC.
-    uint32_t padding; // Pad to multiple of EBPF_CACHE_LINE_SIZE.
+    ebpf_semaphore_t* epoch_table_semaphore; // Semaphore to number of threads active in the epoch per CPU.
+    _Guarded_by_(lock) ebpf_non_preemptible_work_item_t* stale_worker; // Per-CPU stale worker DPC.
+    _Guarded_by_(lock) ebpf_list_entry_t free_list;                    // Per-CPU free list.
+    _Guarded_by_(lock) int timer_armed : 1;
+    _Guarded_by_(lock) int stale : 1;
+    _Guarded_by_(lock) int timer_disabled : 1;
 } ebpf_epoch_cpu_entry_t;
 
-typedef struct _ebpf_epoch_thread_entry
-{
-    ebpf_epoch_state_t epoch_state;     // Per-thread epoch state.
-    uintptr_t old_thread_affinity_mask; // Thread affinity mask before entering an entry/exit block.
-    uint64_t last_used_time;            // Time when this entry was last used.
-} ebpf_epoch_thread_entry_t;
-
-C_ASSERT(sizeof(ebpf_epoch_cpu_entry_t) % EBPF_CACHE_LINE_SIZE == 0); // Verify alignment.
+C_ASSERT(sizeof(ebpf_epoch_cpu_entry_t) % EBPF_CACHE_LINE_SIZE == 0);            // Verify alignment.
+C_ASSERT(EBPF_EPOCH_THREAD_TABLE_SIZE > EBPF_EPOCH_THREAD_TABLE_RESERVED_COUNT); // Verify that the reserved count fits.
 
 static _Writable_elements_(_ebpf_epoch_cpu_count) ebpf_epoch_cpu_entry_t* _ebpf_epoch_cpu_table = NULL;
 static uint32_t _ebpf_epoch_cpu_count = 0;
@@ -135,11 +145,31 @@ typedef struct _ebpf_epoch_work_item
     const void (*callback)(_Inout_ void* context);
 } ebpf_epoch_work_item_t;
 
-typedef enum _ebpf_epoch_get_thread_entry_option
-{
-    EBPF_EPOCH_GET_THREAD_ENTRY_OPTION_CREATE_IF_NOT_FOUND,
-    EBPF_EPOCH_GET_THREAD_ENTRY_OPTION_DO_NOT_CREATE,
-} ebpf_epoch_get_thread_entry_option_t;
+/**
+ * @brief Hash a thread ID into an 8bit number.
+ *
+ * @param[in] thread_id Thread ID to hash.
+ * @return 8bit bucket key.
+ */
+static size_t
+_ebpf_epoch_hash_thread_id(uintptr_t thread_id);
+
+/**
+ * @brief Find the next available epoch state entry in the per-CPU table.
+ * @param[in] cpu_entry Per-CPU entry to search.
+ * @return Pointer to the next available epoch entry.
+ */
+_Requires_lock_held_(cpu_entry->lock) static ebpf_epoch_state_t* _ebpf_epoch_next_available_epoch_entry(
+    _Inout_ ebpf_epoch_cpu_entry_t* cpu_entry);
+
+/**
+ * @brief Get the CPU ID from the epoch state.
+ *
+ * @param[in] epoch_state The epoch state to get the CPU ID from.
+ * @return The CPU ID.
+ */
+uint32_t
+_ebpf_epoch_get_cpu_id_from_state(_In_ ebpf_epoch_state_t* epoch_state);
 
 /**
  * @brief Remove all entries from the per-CPU free list that have an epoch that is before released_epoch.
@@ -154,10 +184,8 @@ _ebpf_epoch_release_free_list(_Inout_ ebpf_epoch_cpu_entry_t* cpu_entry, int64_t
  * @brief Determine the newest inactive epoch and return it.
  *
  * @param[out] release_epoch The newest inactive epoch.
- * @retval EBPF_SUCCESS Found the newest inactive epoch.
- * @retval EBPF_NO_MEMORY Insufficient memory to complete this operation.
  */
-static ebpf_result_t
+static void
 _ebpf_epoch_get_release_epoch(_Out_ int64_t* released_epoch);
 
 /**
@@ -176,16 +204,6 @@ _ebpf_flush_worker(_In_ const void* context);
  */
 static void
 _ebpf_epoch_stale_worker(_In_ const void* work_item_context, _In_ const void* parameter_1);
-
-/**
- * @brief Find or create a thread entry for the current thread.
- * @param[in] cpu_id The CPU id of the current thread.
- * @param[in] thread_id The thread id of the current thread.
- * @param[in] option The option to use when creating the thread entry.
- * @return A pointer to the thread entry.
- */
-static _Requires_lock_held_(_ebpf_epoch_cpu_table[cpu_id].lock) ebpf_epoch_thread_entry_t* _ebpf_epoch_get_thread_entry(
-    uint32_t cpu_id, uintptr_t thread_id, ebpf_epoch_get_thread_entry_option_t option);
 
 /**
  * @brief Arm the flush timer if:
@@ -210,7 +228,8 @@ ebpf_epoch_initiate()
     _ebpf_release_epoch = 0;
     _ebpf_epoch_cpu_count = cpu_count;
 
-    _ebpf_epoch_cpu_table = ebpf_allocate_cache_aligned(sizeof(ebpf_epoch_cpu_entry_t) * cpu_count);
+    _ebpf_epoch_cpu_table = ebpf_allocate_cache_aligned_with_tag(
+        sizeof(ebpf_epoch_cpu_entry_t) * _ebpf_epoch_cpu_count, EBPF_POOL_TAG_EPOCH);
     if (!_ebpf_epoch_cpu_table) {
         return_value = EBPF_NO_MEMORY;
         goto Error;
@@ -219,22 +238,17 @@ ebpf_epoch_initiate()
     ebpf_assert(EBPF_CACHE_ALIGN_POINTER(_ebpf_epoch_cpu_table) == _ebpf_epoch_cpu_table);
 
     for (cpu_id = 0; cpu_id < _ebpf_epoch_cpu_count; cpu_id++) {
-        _ebpf_epoch_cpu_table[cpu_id].epoch_state.epoch = _ebpf_current_epoch;
-        _ebpf_epoch_cpu_table[cpu_id].epoch_state.active = false;
-        ebpf_lock_create(&_ebpf_epoch_cpu_table[cpu_id].lock);
-
-        ebpf_list_initialize(&_ebpf_epoch_cpu_table[cpu_id].free_list);
+        ebpf_epoch_cpu_entry_t* cpu_entry = &_ebpf_epoch_cpu_table[cpu_id];
+        ebpf_lock_create(&cpu_entry->lock);
+        ebpf_list_initialize(&cpu_entry->free_list);
     }
 
     for (cpu_id = 0; cpu_id < _ebpf_epoch_cpu_count; cpu_id++) {
-        const ebpf_hash_table_creation_options_t options = {
-            .key_size = sizeof(uintptr_t),
-            .value_size = sizeof(ebpf_epoch_thread_entry_t),
-            .bucket_count = _ebpf_epoch_cpu_count,
-            .allocate = ebpf_allocate,
-            .free = ebpf_free,
-        };
-        return_value = ebpf_hash_table_create(&_ebpf_epoch_cpu_table[cpu_id].thread_table, &options);
+        ebpf_epoch_cpu_entry_t* cpu_entry = &_ebpf_epoch_cpu_table[cpu_id];
+        return_value = ebpf_semaphore_create(
+            &cpu_entry->epoch_table_semaphore,
+            EBPF_EPOCH_THREAD_TABLE_SIZE - EBPF_EPOCH_THREAD_TABLE_RESERVED_COUNT,
+            EBPF_EPOCH_THREAD_TABLE_SIZE - EBPF_EPOCH_THREAD_TABLE_RESERVED_COUNT);
         if (return_value != EBPF_SUCCESS) {
             goto Error;
         }
@@ -267,7 +281,7 @@ ebpf_epoch_terminate()
     // First disable all timers.
     for (cpu_id = 0; cpu_id < _ebpf_epoch_cpu_count; cpu_id++) {
         ebpf_lock_state_t lock_state = ebpf_lock_lock(&_ebpf_epoch_cpu_table[cpu_id].lock);
-        _ebpf_epoch_cpu_table[cpu_id].epoch_state.timer_disabled = true;
+        _ebpf_epoch_cpu_table[cpu_id].timer_disabled = true;
         ebpf_lock_unlock(&_ebpf_epoch_cpu_table[cpu_id].lock, lock_state);
     }
 
@@ -276,13 +290,16 @@ ebpf_epoch_terminate()
     _ebpf_flush_timer = NULL;
 
     for (cpu_id = 0; cpu_id < _ebpf_epoch_cpu_count; cpu_id++) {
+        ebpf_epoch_cpu_entry_t* cpu_entry = &_ebpf_epoch_cpu_table[cpu_id];
         // Release all memory that is still in the free list.
-        _ebpf_epoch_release_free_list(&_ebpf_epoch_cpu_table[cpu_id], MAXINT64);
-        ebpf_assert(ebpf_list_is_empty(&_ebpf_epoch_cpu_table[cpu_id].free_list));
+        _ebpf_epoch_release_free_list(cpu_entry, MAXINT64);
+        ebpf_assert(ebpf_list_is_empty(&cpu_entry->free_list));
+#pragma warning(suppress : 6001) // _ebpf_epoch_cpu_table is initalized.
         ebpf_lock_destroy(&_ebpf_epoch_cpu_table[cpu_id].lock);
-        ebpf_hash_table_destroy(_ebpf_epoch_cpu_table[cpu_id].thread_table);
-        _ebpf_epoch_cpu_table[cpu_id].thread_table = NULL;
+#pragma warning(suppress : 6001) // _ebpf_epoch_cpu_table is initalized.
         ebpf_free_non_preemptible_work_item(_ebpf_epoch_cpu_table[cpu_id].stale_worker);
+#pragma warning(suppress : 6001) // _ebpf_epoch_cpu_table is initalized.
+        ebpf_semaphore_destroy(_ebpf_epoch_cpu_table[cpu_id].epoch_table_semaphore);
     }
     _ebpf_epoch_cpu_count = 0;
 
@@ -291,129 +308,75 @@ ebpf_epoch_terminate()
     EBPF_RETURN_VOID();
 }
 
-_Must_inspect_result_ ebpf_result_t
+ebpf_epoch_state_t*
 ebpf_epoch_enter()
 {
-    ebpf_result_t return_value;
     uint32_t current_cpu;
-    ebpf_epoch_state_t* epoch_state = NULL;
+    ebpf_epoch_state_t* epoch_entry = NULL;
     // Capture preemptible state outside lock
     bool is_preemptible = ebpf_is_preemptible();
-    uintptr_t old_thread_affinity = 0;
     current_cpu = ebpf_get_current_cpu();
 
-    // If the current CPU is not in the CPU table, then fail the enter.
-    if (current_cpu >= _ebpf_epoch_cpu_count) {
-        return EBPF_OPERATION_NOT_SUPPORTED;
+    if (is_preemptible) {
+        // Prevent APCs from running.
+        ebpf_enter_critical_region();
+
+        // Block until a thread entry is available.
+        ebpf_semaphore_wait(_ebpf_epoch_cpu_table[current_cpu].epoch_table_semaphore);
+        // After the semaphore is acquired, then there is at least 1 available epoch entry.
     }
 
-    // Set the thread affinity to the current CPU.
-    if (is_preemptible) {
-        return_value = ebpf_set_current_thread_affinity((uintptr_t)1 << current_cpu, &old_thread_affinity);
-        if (return_value != EBPF_SUCCESS) {
-            return EBPF_OPERATION_NOT_SUPPORTED;
-        }
-    }
+    // If the current thread is not preemptible, then there is at least 1 available epoch entry.
 
     // Grab the CPU lock.
     ebpf_lock_state_t state = ebpf_lock_lock(&_ebpf_epoch_cpu_table[current_cpu].lock);
 
-    // If this thread is preemptible, then find or create the per thread epoch state.
-    if (is_preemptible) {
-        // Find or create the thread entry.
-        ebpf_epoch_thread_entry_t* thread_entry = _ebpf_epoch_get_thread_entry(
-            current_cpu, ebpf_get_current_thread_id(), EBPF_EPOCH_GET_THREAD_ENTRY_OPTION_CREATE_IF_NOT_FOUND);
-        if (!thread_entry) {
-            return_value = EBPF_NO_MEMORY;
-            goto Done;
-        }
-
-        thread_entry->old_thread_affinity_mask = old_thread_affinity;
-
-        // Update the thread entry's last used time.
-        thread_entry->last_used_time = ebpf_query_time_since_boot(false);
-        epoch_state = &thread_entry->epoch_state;
-    } else {
-        // Otherwise grab the per-CPU epoch state.
-        epoch_state = &_ebpf_epoch_cpu_table[current_cpu].epoch_state;
-    }
+    // Get the next available epoch entry.
+    epoch_entry = _ebpf_epoch_next_available_epoch_entry(&_ebpf_epoch_cpu_table[current_cpu]);
+    ebpf_assert(epoch_entry != NULL);
+    _Analysis_assume_(epoch_entry != NULL);
+    ebpf_assert(epoch_entry->epoch == 0);
 
     // Capture the current epoch.
-    epoch_state->epoch = _ebpf_current_epoch;
+    epoch_entry->epoch = _ebpf_current_epoch;
 
-    // Mark the epoch state as active.
-    epoch_state->active = true;
-    return_value = EBPF_SUCCESS;
-
-Done:
     // Release the CPU lock.
     ebpf_lock_unlock(&_ebpf_epoch_cpu_table[current_cpu].lock, state);
-
-    // Restore thread affinity on failure
-    if (is_preemptible && return_value != 0) {
-        ebpf_restore_current_thread_affinity(old_thread_affinity);
-    }
-    return return_value;
+    return epoch_entry;
 }
 
 void
-ebpf_epoch_exit()
+ebpf_epoch_exit(_In_ ebpf_epoch_state_t* epoch_state)
 {
-    ebpf_epoch_state_t* epoch_state = NULL;
+    uint32_t current_cpu = _ebpf_epoch_get_cpu_id_from_state(epoch_state);
     // Capture preemptible state outside lock
     bool is_preemptible = ebpf_is_preemptible();
-    uint32_t current_cpu = ebpf_get_current_cpu();
-    uintptr_t old_thread_affinity = 0;
-
     bool release_free_list = false;
-    if (current_cpu >= _ebpf_epoch_cpu_count) {
-        return;
-    }
 
     ebpf_lock_state_t state = ebpf_lock_lock(&_ebpf_epoch_cpu_table[current_cpu].lock);
 
-    // If this thread is preemptible, then find the per thread epoch state.
-    if (is_preemptible) {
-        // Get the thread entry for the current thread.
-        ebpf_epoch_thread_entry_t* thread_entry = _ebpf_epoch_get_thread_entry(
-            current_cpu, ebpf_get_current_thread_id(), EBPF_EPOCH_GET_THREAD_ENTRY_OPTION_DO_NOT_CREATE);
+    // Mark the epoch state as available.
+    ebpf_assert(epoch_state->epoch != 0);
+    epoch_state->epoch = 0;
 
-        // If the thread entry is not found, then exit.
-        ebpf_assert(thread_entry);
-        if (!thread_entry) {
-            goto Done;
-        }
-
-        // Update the thread entry's last used time.
-        thread_entry->last_used_time = ebpf_query_time_since_boot(false);
-
-        old_thread_affinity = thread_entry->old_thread_affinity_mask;
-        epoch_state = &thread_entry->epoch_state;
-    } else {
-        // Otherwise grab the per-CPU epoch state.
-        epoch_state = &_ebpf_epoch_cpu_table[current_cpu].epoch_state;
-    }
-
-    // Capture the current epoch.
-    epoch_state->epoch = _ebpf_current_epoch;
-    // Mark the epoch state as inactive.
-    epoch_state->active = false;
     // Mark the epoch state as not stale.
-    epoch_state->stale = false;
+    _ebpf_epoch_cpu_table[current_cpu].stale = false;
 
     if (!ebpf_list_is_empty(&_ebpf_epoch_cpu_table[current_cpu].free_list)) {
         release_free_list = true;
     }
 
-Done:
     ebpf_lock_unlock(&_ebpf_epoch_cpu_table[current_cpu].lock, state);
     if (release_free_list) {
         _ebpf_epoch_release_free_list(&_ebpf_epoch_cpu_table[current_cpu], _ebpf_release_epoch);
     }
 
     if (is_preemptible) {
-        // Restore the thread's affinity mask.
-        ebpf_restore_current_thread_affinity(old_thread_affinity);
+        // Release the thread entry.
+        ebpf_semaphore_release(_ebpf_epoch_cpu_table[current_cpu].epoch_table_semaphore);
+
+        // Allow APCs to run.
+        ebpf_leave_critical_region();
     }
 }
 
@@ -425,26 +388,30 @@ ebpf_epoch_flush()
         return;
     }
 
-    ebpf_result_t return_value = _ebpf_epoch_get_release_epoch(&released_epoch);
-    if (return_value == EBPF_SUCCESS) {
-        EBPF_LOG_MESSAGE_UINT64(
-            EBPF_TRACELOG_LEVEL_VERBOSE, EBPF_TRACELOG_KEYWORD_EPOCH, "_ebpf_release_epoch updated", released_epoch);
-        // _ebpf_release_epoch is updated outside of any lock.
-        _ebpf_release_epoch = released_epoch;
-    }
+    _ebpf_epoch_get_release_epoch(&released_epoch);
+    EBPF_LOG_MESSAGE_UINT64(
+        EBPF_TRACELOG_LEVEL_VERBOSE, EBPF_TRACELOG_KEYWORD_EPOCH, "_ebpf_release_epoch updated", released_epoch);
+    // _ebpf_release_epoch is updated outside of any lock.
+    _ebpf_release_epoch = released_epoch;
 }
 
-_Must_inspect_result_ _Ret_writes_maybenull_(size) void* ebpf_epoch_allocate(size_t size)
+_Must_inspect_result_ _Ret_writes_maybenull_(size) void* ebpf_epoch_allocate_with_tag(size_t size, uint32_t tag)
 {
     ebpf_assert(size);
     ebpf_epoch_allocation_header_t* header;
 
     size += sizeof(ebpf_epoch_allocation_header_t);
-    header = (ebpf_epoch_allocation_header_t*)ebpf_allocate(size);
-    if (header)
+    header = (ebpf_epoch_allocation_header_t*)ebpf_allocate_with_tag(size, tag);
+    if (header) {
         header++;
+    }
 
     return header;
+}
+
+_Must_inspect_result_ _Ret_writes_maybenull_(size) void* ebpf_epoch_allocate(size_t size)
+{
+    return ebpf_epoch_allocate_with_tag(size, EBPF_POOL_TAG_EPOCH);
 }
 
 void
@@ -458,8 +425,9 @@ ebpf_epoch_free(_Frees_ptr_opt_ void* memory)
         return;
     }
 
-    if (!memory)
+    if (!memory) {
         return;
+    }
 
     header--;
 
@@ -594,7 +562,7 @@ _ebpf_epoch_release_free_list(_Inout_ ebpf_epoch_cpu_entry_t* cpu_entry, int64_t
     }
 }
 
-static ebpf_result_t
+static void
 _ebpf_epoch_get_release_epoch(_Out_ int64_t* release_epoch)
 {
     // Grab an non-authoritative version of _ebpf_current_epoch.
@@ -604,8 +572,6 @@ _ebpf_epoch_get_release_epoch(_Out_ int64_t* release_epoch)
     int64_t lowest_epoch = _ebpf_current_epoch;
     uint32_t cpu_id;
     ebpf_lock_state_t lock_state;
-    ebpf_result_t return_value;
-    uint64_t now = ebpf_query_time_since_boot(false);
     EBPF_LOG_MESSAGE_UINT64(
         EBPF_TRACELOG_LEVEL_VERBOSE,
         EBPF_TRACELOG_KEYWORD_EPOCH,
@@ -613,20 +579,17 @@ _ebpf_epoch_get_release_epoch(_Out_ int64_t* release_epoch)
         lowest_epoch);
 
     for (cpu_id = 0; cpu_id < _ebpf_epoch_cpu_count; cpu_id++) {
-        ebpf_epoch_thread_entry_t* thread_entry = NULL;
-        uintptr_t thread_id = 0;
-
         // Grab the CPU epoch lock.
         lock_state = ebpf_lock_lock(&_ebpf_epoch_cpu_table[cpu_id].lock);
 
         // Clear the flush timer flag and re-arm the timer if needed.
-        _ebpf_epoch_cpu_table[cpu_id].epoch_state.timer_armed = false;
+        _ebpf_epoch_cpu_table[cpu_id].timer_armed = false;
         _ebpf_epoch_arm_timer_if_needed(&_ebpf_epoch_cpu_table[cpu_id]);
 
         // Check for stale items in the free list.
         if (!ebpf_list_is_empty(&_ebpf_epoch_cpu_table[cpu_id].free_list)) {
             // If the stale flag is set, then schedule the DPC to release the stale items.
-            if (_ebpf_epoch_cpu_table[cpu_id].epoch_state.stale) {
+            if (_ebpf_epoch_cpu_table[cpu_id].stale) {
                 if (!_ebpf_epoch_cpu_table[cpu_id].stale_worker) {
                     // If ebpf_allocate_non_preemptible_work_item fails, it will retry next time the timer fires.
                     (void)ebpf_allocate_non_preemptible_work_item(
@@ -636,79 +599,23 @@ _ebpf_epoch_get_release_epoch(_Out_ int64_t* release_epoch)
                     ebpf_queue_non_preemptible_work_item(_ebpf_epoch_cpu_table[cpu_id].stale_worker, NULL);
                 }
             } else {
-                _ebpf_epoch_cpu_table[cpu_id].epoch_state.stale = true;
+                _ebpf_epoch_cpu_table[cpu_id].stale = true;
             }
         }
 
-        // Include this epoch state if it's active.
-        if (_ebpf_epoch_cpu_table[cpu_id].epoch_state.active) {
-            lowest_epoch = min(lowest_epoch, _ebpf_epoch_cpu_table[cpu_id].epoch_state.epoch);
+        // Loop over the thread table and compute the lowest active epoch.
+        for (size_t index = 0; index < EBPF_EPOCH_THREAD_TABLE_SIZE; index++) {
+            ebpf_epoch_state_t* epoch_state = &_ebpf_epoch_cpu_table[cpu_id].epoch_table[index];
+            if (epoch_state->epoch != 0) {
+                lowest_epoch = min(lowest_epoch, epoch_state->epoch);
+            }
         }
-
-        // If a thread was last used before this cutoff, then it is stale and should be removed.
-        uint64_t stale_thread_cutoff =
-            now - (EBPF_EPOCH_THREAD_TABLE_TIMEOUT_IN_NANO_SECONDS / EBPF_NANO_SECONDS_PER_FILETIME_TICK);
-
-        // Loop over all the threads in this CPU entry.
-        do {
-            // Get the next per-thread entry from this CPU.
-            return_value = ebpf_hash_table_next_key_and_value(
-                _ebpf_epoch_cpu_table[cpu_id].thread_table,
-                thread_id == 0 ? NULL : (uint8_t*)&thread_id,
-                (uint8_t*)&thread_id,
-                (uint8_t**)&thread_entry);
-
-            // There are no more entries in the table.
-            if (return_value != EBPF_SUCCESS) {
-                break;
-            }
-
-            // Include this epoch state if it's active.
-            if (thread_entry->epoch_state.active) {
-                int64_t age = now - thread_entry->last_used_time;
-                if (age > EBPF_EPOCH_STALE_THREAD_TIME_IN_NANO_SECONDS) {
-                    EBPF_LOG_MESSAGE_UINT64_UINT64(
-                        EBPF_TRACELOG_LEVEL_VERBOSE,
-                        EBPF_TRACELOG_KEYWORD_EPOCH,
-                        "Stale active thread entry",
-                        (uint64_t)thread_id,
-                        age);
-                    // Reset last_used_time time to limit rate of logging.
-                    thread_entry->last_used_time = now;
-                }
-                lowest_epoch = min(lowest_epoch, thread_entry->epoch_state.epoch);
-            } else {
-                // Check if the thread entry has been used in the time interval [stale_thread_cutoff, now].
-                // If not, then delete the entry.
-                if (thread_entry->last_used_time < stale_thread_cutoff) {
-                    EBPF_LOG_MESSAGE_UINT64(
-                        EBPF_TRACELOG_LEVEL_VERBOSE,
-                        EBPF_TRACELOG_KEYWORD_EPOCH,
-                        "Deleting unused thread entry",
-                        (uint64_t)thread_id);
-                    // ebpf_hash_table_delete will free the thread_entry memory.
-                    // Ignore the return value since the key is guaranteed to be present.
-                    (void)ebpf_hash_table_delete(_ebpf_epoch_cpu_table[cpu_id].thread_table, (uint8_t*)&thread_id);
-
-                    // ebpf_hash_table_next_key_and_value will return the next entry even if the current entry is
-                    // deleted.
-                }
-            }
-        } while (return_value == EBPF_SUCCESS);
 
         // Release the CPU epoch lock.
         ebpf_lock_unlock(&_ebpf_epoch_cpu_table[cpu_id].lock, lock_state);
-        if (return_value != EBPF_NO_MORE_KEYS) {
-            goto Exit;
-        }
-        return_value = EBPF_SUCCESS;
     }
 
-    return_value = EBPF_SUCCESS;
-
-Exit:
     *release_epoch = lowest_epoch - 1;
-    return return_value;
 }
 
 static void
@@ -719,43 +626,18 @@ _ebpf_flush_worker(_In_ const void* context)
     ebpf_epoch_flush();
 }
 
-static _Requires_lock_held_(_ebpf_epoch_cpu_table[cpu_id].lock) ebpf_epoch_thread_entry_t* _ebpf_epoch_get_thread_entry(
-    uint32_t cpu_id, uintptr_t thread_id, ebpf_epoch_get_thread_entry_option_t option)
-{
-    ebpf_result_t return_value;
-    ebpf_epoch_thread_entry_t* thread_entry = NULL;
-    ebpf_epoch_thread_entry_t local_thread_epoch = {MAXINT64};
-
-    return_value = ebpf_hash_table_find(
-        _ebpf_epoch_cpu_table[cpu_id].thread_table, (uint8_t*)&thread_id, (uint8_t**)&thread_entry);
-    if (return_value == EBPF_KEY_NOT_FOUND && (option == EBPF_EPOCH_GET_THREAD_ENTRY_OPTION_CREATE_IF_NOT_FOUND)) {
-        return_value = ebpf_hash_table_update(
-            _ebpf_epoch_cpu_table[cpu_id].thread_table,
-            (const uint8_t*)&thread_id,
-            (const uint8_t*)&local_thread_epoch,
-            EBPF_HASH_TABLE_OPERATION_INSERT);
-        if (return_value == EBPF_SUCCESS || return_value == EBPF_OBJECT_ALREADY_EXISTS) {
-            ebpf_assert_success(ebpf_hash_table_find(
-                _ebpf_epoch_cpu_table[cpu_id].thread_table, (uint8_t*)&thread_id, (uint8_t**)&thread_entry));
-            ebpf_assert(thread_entry != NULL);
-        }
-    }
-
-    return thread_entry;
-}
-
 static _Requires_lock_held_(cpu_entry->lock) void _ebpf_epoch_arm_timer_if_needed(ebpf_epoch_cpu_entry_t* cpu_entry)
 {
-    if (cpu_entry->epoch_state.timer_disabled) {
+    if (cpu_entry->timer_disabled) {
         return;
     }
-    if (cpu_entry->epoch_state.timer_armed) {
+    if (cpu_entry->timer_armed) {
         return;
     }
     if (ebpf_list_is_empty(&cpu_entry->free_list)) {
         return;
     }
-    cpu_entry->epoch_state.timer_armed = true;
+    cpu_entry->timer_armed = true;
     ebpf_schedule_timer_work_item(_ebpf_flush_timer, EBPF_EPOCH_FLUSH_DELAY_IN_MICROSECONDS);
     return;
 }
@@ -765,7 +647,49 @@ _ebpf_epoch_stale_worker(_In_ const void* work_item_context, _In_ const void* pa
 {
     UNREFERENCED_PARAMETER(work_item_context);
     UNREFERENCED_PARAMETER(parameter_1);
-    if (ebpf_epoch_enter() == EBPF_SUCCESS) {
-        ebpf_epoch_exit();
+    ebpf_epoch_exit(ebpf_epoch_enter());
+}
+
+/**
+ * @brief Hash a thread ID into an 8bit number.
+ *
+ * @param[in] thread_id Thread ID to hash.
+ * @return 8bit bucket key.
+ */
+static size_t
+_ebpf_epoch_hash_thread_id(uintptr_t thread_id)
+{
+    // Collapse top 32bits into lower 32bits.
+    size_t v1 = (thread_id >> 32) ^ (thread_id & 0xFFFFFFFF);
+    // Collapse top 16bits into lower 16bits.
+    size_t v2 = (v1 >> 16) ^ (v1 & 0xFFFF);
+    // Collapse top 8bits into lower 8bits and return it.
+    return (v2 >> 8) ^ (v2 & 0xFF);
+}
+
+_Requires_lock_held_(cpu_entry->lock) static ebpf_epoch_state_t* _ebpf_epoch_next_available_epoch_entry(
+    _Inout_ ebpf_epoch_cpu_entry_t* cpu_entry)
+{
+    uintptr_t thread_id = ebpf_get_current_thread_id();
+    // Find the ideal bucket for this thread_id.
+    size_t bucket = _ebpf_epoch_hash_thread_id(thread_id) % EBPF_EPOCH_THREAD_TABLE_SIZE;
+    // Search for the thread_id in the table starting at the ideal bucket.
+    for (size_t i = 0; i < EBPF_EPOCH_THREAD_TABLE_SIZE; i++) {
+        ebpf_epoch_state_t* epoch_state = &cpu_entry->epoch_table[bucket];
+        if (epoch_state->epoch == 0) {
+            return epoch_state;
+        }
+        bucket = (bucket + 1) % EBPF_EPOCH_THREAD_TABLE_SIZE;
     }
+    ebpf_assert(!"Epoch state not found");
+    return NULL;
+}
+
+uint32_t
+_ebpf_epoch_get_cpu_id_from_state(_In_ ebpf_epoch_state_t* state)
+{
+    uintptr_t offset = (uintptr_t)state;
+    offset -= (uintptr_t)_ebpf_epoch_cpu_table;
+    offset /= sizeof(ebpf_epoch_cpu_entry_t);
+    return (uint32_t)offset;
 }

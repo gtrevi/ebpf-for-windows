@@ -11,6 +11,7 @@ extern "C"
 #endif
 
     typedef struct _ebpf_epoch_work_item ebpf_epoch_work_item_t;
+    typedef struct _ebpf_epoch_state ebpf_epoch_state_t;
 
     /**
      * @brief Initialize the eBPF epoch tracking module.
@@ -31,18 +32,17 @@ extern "C"
 
     /**
      * @brief Called prior to touching memory with lifetime under epoch control.
-     * @retval EBPF_SUCCESS The operation was successful.
-     * @retval EBPF_NO_MEMORY Unable to allocate per-thread
-     *   tracking state.
+     * @returns Pointer to epoch state that must be passed to ebpf_epoch_exit.
      */
-    _Must_inspect_result_ ebpf_result_t
+    ebpf_epoch_state_t*
     ebpf_epoch_enter();
 
     /**
      * @brief Called after touching memory with lifetime under epoch control.
+     * @param[in] epoch_state Pointer to epoch state returned by ebpf_epoch_enter.
      */
     void
-    ebpf_epoch_exit();
+    ebpf_epoch_exit(_In_ ebpf_epoch_state_t* epoch_state);
 
     /**
      * @brief Allocate memory under epoch control.
@@ -50,6 +50,14 @@ extern "C"
      * @returns Pointer to memory block allocated, or null on failure.
      */
     _Must_inspect_result_ _Ret_writes_maybenull_(size) void* ebpf_epoch_allocate(size_t size);
+
+    /**
+     * @brief Allocate memory under epoch control with tag.
+     * @param[in] size Size of memory to allocate
+     * @param[in] tag Pool tag to use.
+     * @returns Pointer to memory block allocated, or null on failure.
+     */
+    _Must_inspect_result_ _Ret_writes_maybenull_(size) void* ebpf_epoch_allocate_with_tag(size_t size, uint32_t tag);
 
     /**
      * @brief Free memory under epoch control.

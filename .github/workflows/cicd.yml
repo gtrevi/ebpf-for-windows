@@ -4,6 +4,9 @@
 # This is the top-level workflow that runs on each pull request and push to main.
 # It invokes other jobs to perform builds and run tests.
 # All jobs run in parallel, using build artifacts to synchronize jobs.
+#
+# If you add or remove any tests that use reusable-test.yml on a pull request,
+# you must update codecov.yml to match.
 
 name: CI/CD
 
@@ -13,6 +16,7 @@ on:
     - cron: '00 21 * * *'
   # Run on pull request to validate code changes.
   pull_request:
+  merge_group:
   # Run on push so we can capture the baseline code coverage.
   push:
     branches: [ main ]
@@ -36,28 +40,27 @@ jobs:
   # Perform the regular build.
   regular:
     # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-build.yml
     with:
       build_artifact: Build-x64
       generate_release_package: true
+      build_msi: true
       build_nuget: true
       build_options: /p:ReleaseJIT='True'
 
   # Perform the native-only build.
   regular_native-only:
     # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-build.yml
     with:
       build_artifact: Build-x64-native-only
-      generate_release_package: true
-      build_nuget: true
       build_options: /p:DisableJIT='True' /p:DisableInterpreter='True'
 
   cmake:
     # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-cmake-build.yml
     with:
       build_artifact: Build-x64-cmake
@@ -65,7 +68,7 @@ jobs:
   # Perform the libfuzzer build.
   libfuzzer:
     # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-build.yml
     with:
       build_artifact: Build-x64-fuzzer
@@ -77,25 +80,11 @@ jobs:
   unit_tests:
     # Always run this job.
     needs: regular
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: unit_tests
       pre_test: appverif -enable Exceptions Handles Heaps Leak Locks Memory SRWLock Threadpool TLS DangerousAPIs DirtyStacks TimeRollOver -for unit_tests.exe
-      test_command: .\unit_tests.exe -d yes
-      build_artifact: Build-x64
-      environment: windows-2022
-      code_coverage: true
-      gather_dumps: true
-      capture_etw: true
-
-  unit_tests_leak_detection:
-    # Always run this job.
-    needs: regular
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      name: unit_tests_with_leak_detection
       test_command: .\unit_tests.exe -d yes
       build_artifact: Build-x64
       environment: windows-2022
@@ -108,7 +97,7 @@ jobs:
   netebpf_ext_unit_tests:
     # Always run this job.
     needs: regular
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: netebpf_ext_unit_tests
@@ -119,12 +108,13 @@ jobs:
       code_coverage: true
       gather_dumps: true
       capture_etw: true
+      leak_detection: true
 
   # Run the bpf2c tests in GitHub.
   bpf2c:
     # Always run this job.
     needs: regular
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       test_command: .\bpf2c_tests.exe -d yes
@@ -140,7 +130,7 @@ jobs:
   bpf2c_conformance:
     # Always run this job.
     needs: regular
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       pre_test: Invoke-WebRequest https://github.com/Alan-Jowett/bpf_conformance/releases/download/v0.0.3/bpf_conformance_runner.exe -OutFile bpf_conformance_runner.exe
@@ -175,7 +165,7 @@ jobs:
   ossar:
     # Always run this job.
     needs: regular
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/ossar-scan.yml
     with:
       build_artifact: Build-x64
@@ -185,7 +175,7 @@ jobs:
   # Build with C++ static analyzer.
   analyze:
     # Only run on schedule and pull request.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-build.yml
     with:
       build_artifact: Build-x64-Analyze
@@ -195,7 +185,7 @@ jobs:
   # Build with C++ address sanitizer.
   sanitize:
     # Only run on schedule and pull request.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-build.yml
     with:
       build_artifact: Build-x64-Sanitize
@@ -203,7 +193,7 @@ jobs:
 
   bpf2c_fuzzer:
     needs: libfuzzer
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: bpf2c_fuzzer
@@ -228,7 +218,7 @@ jobs:
   execution_context_fuzzer:
     needs: libfuzzer
     # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: execution_context_fuzzer
@@ -242,7 +232,7 @@ jobs:
   verifier_fuzzer:
     needs: libfuzzer
     # Always run this job.
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: verifier_fuzzer
@@ -268,7 +258,7 @@ jobs:
   core_helper_fuzzer:
     needs: libfuzzer
     # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: core_helper_fuzzer
@@ -281,7 +271,7 @@ jobs:
   netebpfext_fuzzer:
     needs: libfuzzer
     # Always run this job.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: netebpfext_fuzzer
@@ -295,7 +285,7 @@ jobs:
   cilium_tests:
     needs: regular
     # Only run on schedule and pull request.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: cilium_tests
@@ -309,7 +299,7 @@ jobs:
   stress:
     needs: regular
     # Only run on schedule and pull request.
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: stress
@@ -324,7 +314,7 @@ jobs:
   # Run the unit tests in GitHub with address sanitizer.
   sanitize_unit_tests:
     needs: sanitize
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request'
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       name: unit_tests
@@ -335,18 +325,33 @@ jobs:
       gather_dumps: true
       capture_etw: true
 
-  # Run the low memory simulator in GitHub.
-  low_memory:
+  # Run the fault injection simulator in GitHub.
+  fault_injection:
     needs: regular
     uses: ./.github/workflows/reusable-test.yml
     with:
-      name: low_memory
+      name: fault_injection
       test_command: .\unit_tests.exe
       build_artifact: Build-x64
       environment: windows-2022
       code_coverage: true
       gather_dumps: true
-      low_memory: true
+      fault_injection: true
+      leak_detection: true
+
+  # Run the low memory simulator for netebpfext_unit tests.
+  fault_injection_netebpfext_unit:
+    needs: regular
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      name: netebpfext_fault_injection
+      test_command: .\netebpfext_unit.exe
+      build_artifact: Build-x64
+      environment: windows-2022
+      code_coverage: true
+      gather_dumps: true
+      fault_injection: true
+      leak_detection: true
 
   # Additional jobs to run on a schedule only (skip push and pull request).
   # ---------------------------------------------------------------------------
@@ -359,17 +364,48 @@ jobs:
       build_codeql: true
 
 
-  # Run the complete low memory simulator in GitHub.
+  # Run the complete fault injection simulator in GitHub.
   # Runs on a schedule as this takes a long time to run.
-  low_memory_full:
+  fault_injection_full:
     needs: regular
     if: github.event_name == 'schedule'
     uses: ./.github/workflows/reusable-test.yml
     with:
-      name: low_memory_full
+      name: fault_injection_full
       test_command: .\unit_tests.exe
       build_artifact: Build-x64
-      environment: windows-2019
+      environment: windows-2022
       code_coverage: false
       gather_dumps: true
-      low_memory: true
+      fault_injection: true
+      leak_detection: true
+
+  # Run the complete fault injection simulator for netebpfext in GitHub.
+  # Runs on a schedule as this takes a long time to run.
+  netebpfext_fault_injection_full:
+    needs: regular
+    if: github.event_name == 'schedule'
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      name: netebpfext_fault_injection_full
+      test_command: .\netebpfext_unit.exe
+      build_artifact: Build-x64
+      environment: windows-2022
+      code_coverage: false
+      gather_dumps: true
+      fault_injection: true
+
+  # Run multi-threaded stress tests against the user mode 'mock' framework.
+  user_mode_multi_threaded_stress_test:
+    needs: regular
+    if: github.event_name == 'schedule'
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      name: user_mode_multi_threaded_stress
+      test_command: .\ebpf_stress_tests_um -jtt=32 -jtd=300
+      build_artifact: Build-x64
+      environment: windows-2022
+      code_coverage: false
+      leak_detection: false
+      gather_dumps: true
+      capture_etw: true

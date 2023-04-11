@@ -70,7 +70,7 @@ typedef struct _ebpf_id_entry
 // if needed by making each array element store a linked list of
 // entries in order by ID, rather than a single entry, in which
 // case this becomes a hash table.
-static _Requires_lock_held_(&_ebpf_object_tracking_list_lock) ebpf_id_entry_t _ebpf_id_table[1024];
+static _Guarded_by_(_ebpf_object_tracking_list_lock) ebpf_id_entry_t _ebpf_id_table[1024];
 
 // Get the ID last stored at a given index.
 static inline ebpf_id_t
@@ -195,8 +195,9 @@ _Requires_lock_held_(&_ebpf_object_tracking_list_lock) static void _ebpf_object_
 {
     int32_t new_ref_count;
 
-    if (!object)
+    if (!object) {
         return;
+    }
 
     ebpf_assert(object->base.marker == _ebpf_object_marker);
 
@@ -218,8 +219,9 @@ ebpf_object_release_reference(ebpf_core_object_t* object)
 {
     int32_t new_ref_count;
 
-    if (!object)
+    if (!object) {
         return;
+    }
 
     ebpf_assert(object->base.marker == _ebpf_object_marker);
 
@@ -252,12 +254,21 @@ ebpf_duplicate_utf8_string(_Out_ ebpf_utf8_string_t* destination, _In_ const ebp
         return EBPF_SUCCESS;
     } else {
         destination->value = ebpf_allocate(source->length);
-        if (!destination->value)
+        if (!destination->value) {
             return EBPF_NO_MEMORY;
+        }
         memcpy(destination->value, source->value, source->length);
         destination->length = source->length;
         return EBPF_SUCCESS;
     }
+}
+
+void
+ebpf_utf8_string_free(_Inout_ ebpf_utf8_string_t* string)
+{
+    ebpf_free(string->value);
+    string->value = NULL;
+    string->length = 0;
 }
 
 _Requires_lock_held_(&_ebpf_object_tracking_list_lock) static ebpf_core_object_t* _get_next_object_by_id(
@@ -332,8 +343,9 @@ ebpf_object_reference_by_id(ebpf_id_t id, ebpf_object_type_t object_type, _Outpt
             if ((found != NULL) && (found->type == object_type)) {
                 ebpf_object_acquire_reference(found);
                 *object = found;
-            } else
+            } else {
                 return_value = EBPF_KEY_NOT_FOUND;
+            }
         }
     }
 
@@ -352,8 +364,9 @@ ebpf_object_dereference_by_id(ebpf_id_t id, ebpf_object_type_t object_type)
         ebpf_core_object_t* found = _ebpf_id_table[index].object;
         if ((found != NULL) && (found->type == object_type)) {
             _ebpf_object_release_reference_under_lock(found);
-        } else
+        } else {
             return_value = EBPF_KEY_NOT_FOUND;
+        }
     }
 
     ebpf_lock_unlock(&_ebpf_object_tracking_list_lock, state);

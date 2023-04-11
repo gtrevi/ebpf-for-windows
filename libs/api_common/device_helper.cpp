@@ -82,8 +82,9 @@ clean_up_async_ioctl_completion(_Inout_opt_ _Post_invalid_ async_ioctl_completio
             CloseThreadpoolWait(async_ioctl_completion->wait);
         }
 
-        if (async_ioctl_completion->overlapped.hEvent != nullptr)
+        if (async_ioctl_completion->overlapped.hEvent != nullptr) {
             ::CloseHandle(async_ioctl_completion->overlapped.hEvent);
+        }
 
         ebpf_free(async_ioctl_completion);
     }
@@ -148,7 +149,7 @@ get_async_ioctl_operation_overlapped(_In_ const async_ioctl_completion_t* async_
 _Must_inspect_result_ ebpf_result_t
 get_async_ioctl_result(_In_ const async_ioctl_completion_t* ioctl_completion)
 {
-    DWORD dummy;
+    unsigned long dummy;
     if (!GetOverlappedResult(
             reinterpret_cast<HANDLE>(get_device_handle()),
             get_async_ioctl_operation_overlapped(ioctl_completion),
@@ -201,14 +202,16 @@ initialize_async_ioctl_operation(
 
     // Register for wait on the completion of the async IOCTL.
     result = register_wait_async_ioctl_operation(local_async_ioctl_completion);
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Exit;
+    }
 
     *async_ioctl_completion = local_async_ioctl_completion;
 
 Exit:
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         clean_up_async_ioctl_completion(local_async_ioctl_completion);
+    }
 
     EBPF_RETURN_RESULT(result);
 }

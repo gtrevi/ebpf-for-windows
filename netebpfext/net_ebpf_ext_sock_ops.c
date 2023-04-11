@@ -147,11 +147,13 @@ net_ebpf_extension_sock_ops_on_client_attach(
         &compartment_id,
         &wild_card_compartment_id,
         (net_ebpf_extension_hook_provider_t*)provider_context);
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Exit;
+    }
 
-    if (client_data->data != NULL)
+    if (client_data->data != NULL) {
         compartment_id = *(uint32_t*)client_data->data;
+    }
 
     // Set compartment id (if not UNSPECIFIED_COMPARTMENT_ID) as WFP filter condition.
     if (compartment_id != UNSPECIFIED_COMPARTMENT_ID) {
@@ -165,8 +167,9 @@ net_ebpf_extension_sock_ops_on_client_attach(
         sizeof(net_ebpf_extension_sock_ops_wfp_filter_context_t),
         attaching_client,
         (net_ebpf_extension_wfp_filter_context_t**)&filter_context);
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Exit;
+    }
     filter_context->compartment_id = compartment_id;
     filter_context->base.filter_ids_count = NET_EBPF_SOCK_OPS_FILTER_COUNT;
     KeInitializeSpinLock(&filter_context->lock);
@@ -181,8 +184,9 @@ net_ebpf_extension_sock_ops_on_client_attach(
         (compartment_id == UNSPECIFIED_COMPARTMENT_ID) ? NULL : &condition,
         (net_ebpf_extension_wfp_filter_context_t*)filter_context,
         &filter_context->base.filter_ids);
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Exit;
+    }
 
     // Set the filter context as the client context's provider data.
     net_ebpf_extension_hook_client_set_provider_data(
@@ -190,8 +194,9 @@ net_ebpf_extension_sock_ops_on_client_attach(
 
 Exit:
     if (result != EBPF_SUCCESS) {
-        if (filter_context != NULL)
+        if (filter_context != NULL) {
             ExFreePool(filter_context);
+        }
     }
 
     NET_EBPF_EXT_RETURN_RESULT(result);
@@ -203,42 +208,35 @@ _net_ebpf_extension_sock_ops_on_client_detach(_In_ const net_ebpf_extension_hook
     net_ebpf_extension_sock_ops_wfp_filter_context_t* filter_context =
         (net_ebpf_extension_sock_ops_wfp_filter_context_t*)net_ebpf_extension_hook_client_get_provider_data(
             detaching_client);
-    net_ebpf_extension_flow_context_parameters_t* flow_parameters_array = NULL;
-    uint32_t flow_count = 0;
-    uint32_t flow_index = 0;
     KIRQL irql;
-    bool lock_held = FALSE;
+    LIST_ENTRY local_list_head;
+
     ASSERT(filter_context != NULL);
+    InitializeListHead(&local_list_head);
     net_ebpf_extension_delete_wfp_filters(filter_context->base.filter_ids_count, filter_context->base.filter_ids);
 
     KeAcquireSpinLock(&filter_context->lock, &irql);
-    lock_held = TRUE;
-    flow_count = filter_context->flow_context_list.count;
-    if (flow_count > 0) {
-        flow_parameters_array = (net_ebpf_extension_flow_context_parameters_t*)ExAllocatePoolUninitialized(
-            NonPagedPoolNx,
-            sizeof(net_ebpf_extension_flow_context_parameters_t) * flow_count,
-            NET_EBPF_EXTENSION_POOL_TAG);
-        if (flow_parameters_array == NULL)
-            goto Exit;
-        // Remove any remaining flow contexts and copy their flow parameters.
-        while (!IsListEmpty(&filter_context->flow_context_list.list_head)) {
-            LIST_ENTRY* entry = RemoveHeadList(&filter_context->flow_context_list.list_head);
-            InitializeListHead(entry);
-            net_ebpf_extension_sock_ops_wfp_flow_context_t* flow_context =
-                CONTAINING_RECORD(entry, net_ebpf_extension_sock_ops_wfp_flow_context_t, link);
-            flow_context->client_detached = TRUE;
-            _Analysis_assume_(flow_index < flow_count);
-            flow_parameters_array[flow_index++] = flow_context->parameters;
-        }
+    if (filter_context->flow_context_list.count > 0) {
+
+        LIST_ENTRY* entry = filter_context->flow_context_list.list_head.Flink;
+        RemoveEntryList(&filter_context->flow_context_list.list_head);
+        InitializeListHead(&filter_context->flow_context_list.list_head);
+        AppendTailList(&local_list_head, entry);
+
         filter_context->flow_context_list.count = 0;
     }
     KeReleaseSpinLock(&filter_context->lock, irql);
-    lock_held = FALSE;
 
     // Remove the flow context associated with the WFP flows.
-    for (flow_index = 0; flow_index < flow_count; flow_index++) {
-        net_ebpf_extension_flow_context_parameters_t* flow_parameters = &flow_parameters_array[flow_index];
+    while (!IsListEmpty(&local_list_head)) {
+        LIST_ENTRY* entry = RemoveHeadList(&local_list_head);
+        InitializeListHead(entry);
+        net_ebpf_extension_sock_ops_wfp_flow_context_t* flow_context =
+            CONTAINING_RECORD(entry, net_ebpf_extension_sock_ops_wfp_flow_context_t, link);
+        flow_context->client_detached = TRUE;
+
+        net_ebpf_extension_flow_context_parameters_t* flow_parameters = &flow_context->parameters;
+
         // https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/fwpsk/nf-fwpsk-fwpsflowremovecontext0
         // Calling FwpsFlowRemoveContext may cause the flowDeleteFn callback on the callout to be invoked synchronously.
         // The net_ebpf_extension_sock_ops_flow_delete function frees the flow context memory and
@@ -251,13 +249,6 @@ _net_ebpf_extension_sock_ops_on_client_detach(_In_ const net_ebpf_extension_hook
 #pragma warning(pop)
     }
 
-Exit:
-    if (lock_held)
-        KeReleaseSpinLock(&filter_context->lock, irql);
-
-    if (flow_parameters_array != NULL)
-        ExFreePool(flow_parameters_array);
-
     net_ebpf_extension_wfp_filter_context_cleanup((net_ebpf_extension_wfp_filter_context_t*)filter_context);
 }
 
@@ -268,14 +259,14 @@ _net_ebpf_sock_ops_update_store_entries()
 
     // Update section information.
     uint32_t section_info_count = sizeof(_ebpf_sock_ops_section_info) / sizeof(ebpf_program_section_info_t);
-    status = ebpf_store_update_section_information(&_ebpf_sock_ops_section_info[0], section_info_count);
+    status = _ebpf_store_update_section_information(&_ebpf_sock_ops_section_info[0], section_info_count);
     if (!NT_SUCCESS(status)) {
         return status;
     }
 
     // Update program information.
     _ebpf_sock_ops_program_info.program_type_descriptor.program_type = EBPF_PROGRAM_TYPE_SOCK_OPS;
-    status = ebpf_store_update_program_information(&_ebpf_sock_ops_program_info, 1);
+    status = _ebpf_store_update_program_information(&_ebpf_sock_ops_program_info, 1);
 
     return status;
 }
@@ -301,9 +292,10 @@ net_ebpf_ext_sock_ops_register_providers()
     // Set the program type as the provider module id.
     _ebpf_sock_ops_program_info_provider_moduleid.Guid = EBPF_PROGRAM_TYPE_SOCK_OPS;
     status = net_ebpf_extension_program_info_provider_register(
-        &program_info_provider_parameters, NULL, NULL, &_ebpf_sock_ops_program_info_provider_context);
-    if (status != STATUS_SUCCESS)
+        &program_info_provider_parameters, &_ebpf_sock_ops_program_info_provider_context);
+    if (!NT_SUCCESS(status)) {
         goto Exit;
+    }
 
     _net_ebpf_sock_ops_hook_provider_data.supported_program_type = EBPF_PROGRAM_TYPE_SOCK_OPS;
     _net_ebpf_sock_ops_hook_provider_data.bpf_attach_type = BPF_CGROUP_SOCK_OPS;
@@ -320,18 +312,28 @@ net_ebpf_ext_sock_ops_register_providers()
         NULL,
         &_ebpf_sock_ops_hook_provider_context);
 
-    if (status != EBPF_SUCCESS)
+    if (status != EBPF_SUCCESS) {
         goto Exit;
+    }
 
 Exit:
+    if (!NT_SUCCESS(status)) {
+        net_ebpf_ext_sock_ops_unregister_providers();
+    }
     NET_EBPF_EXT_RETURN_NTSTATUS(status);
 }
 
 void
 net_ebpf_ext_sock_ops_unregister_providers()
 {
-    net_ebpf_extension_hook_provider_unregister(_ebpf_sock_ops_hook_provider_context);
-    net_ebpf_extension_program_info_provider_unregister(_ebpf_sock_ops_program_info_provider_context);
+    if (_ebpf_sock_ops_hook_provider_context) {
+        net_ebpf_extension_hook_provider_unregister(_ebpf_sock_ops_hook_provider_context);
+        _ebpf_sock_ops_hook_provider_context = NULL;
+    }
+    if (_ebpf_sock_ops_program_info_provider_context) {
+        net_ebpf_extension_program_info_provider_unregister(_ebpf_sock_ops_program_info_provider_context);
+        _ebpf_sock_ops_program_info_provider_context = NULL;
+    }
 }
 
 wfp_ale_layer_fields_t wfp_flow_established_fields[] = {
@@ -423,12 +425,14 @@ net_ebpf_extension_sock_ops_flow_established_classify(
 
     filter_context = (net_ebpf_extension_sock_ops_wfp_filter_context_t*)filter->context;
     ASSERT(filter_context != NULL);
-    if (filter_context == NULL)
+    if (filter_context == NULL) {
         goto Exit;
+    }
 
     attached_client = (net_ebpf_extension_hook_client_t*)filter_context->base.client_context;
-    if (attached_client == NULL)
+    if (attached_client == NULL) {
         goto Exit;
+    }
 
     if (!net_ebpf_extension_hook_client_enter_rundown(attached_client)) {
         attached_client = NULL;
@@ -471,8 +475,9 @@ net_ebpf_extension_sock_ops_flow_established_classify(
     local_flow_context->parameters.layer_id = incoming_fixed_values->layerId;
     local_flow_context->parameters.callout_id = net_ebpf_extension_get_callout_id_for_hook(hook_id);
 
-    if (net_ebpf_extension_hook_invoke_program(attached_client, sock_ops_context, &result) != EBPF_SUCCESS)
+    if (net_ebpf_extension_hook_invoke_program(attached_client, sock_ops_context, &result) != EBPF_SUCCESS) {
         goto Exit;
+    }
 
     status = FwpsFlowAssociateContext(
         local_flow_context->parameters.flow_id,
@@ -498,14 +503,17 @@ net_ebpf_extension_sock_ops_flow_established_classify(
     local_flow_context = NULL;
 
     classify_output->actionType = (result == 0) ? FWP_ACTION_PERMIT : FWP_ACTION_BLOCK;
-    if (classify_output->actionType == FWP_ACTION_BLOCK)
+    if (classify_output->actionType == FWP_ACTION_BLOCK) {
         classify_output->rights &= ~FWPS_RIGHT_ACTION_WRITE;
+    }
 
 Exit:
-    if (local_flow_context != NULL)
+    if (local_flow_context != NULL) {
         ExFreePool(local_flow_context);
-    if (attached_client != NULL)
+    }
+    if (attached_client != NULL) {
         net_ebpf_extension_hook_client_leave_rundown(attached_client);
+    }
 }
 
 void
@@ -523,8 +531,9 @@ net_ebpf_extension_sock_ops_flow_delete(uint16_t layer_id, uint32_t callout_id, 
     UNREFERENCED_PARAMETER(callout_id);
 
     ASSERT(local_flow_context != NULL);
-    if (local_flow_context == NULL)
+    if (local_flow_context == NULL) {
         goto Exit;
+    }
 
     NET_EBPF_EXT_LOG_MESSAGE_UINT64(
         NET_EBPF_EXT_TRACELOG_LEVEL_VERBOSE,
@@ -533,17 +542,20 @@ net_ebpf_extension_sock_ops_flow_delete(uint16_t layer_id, uint32_t callout_id, 
         local_flow_context->parameters.flow_id);
 
     filter_context = local_flow_context->filter_context;
-    if (filter_context == NULL)
+    if (filter_context == NULL) {
         goto Exit;
+    }
 
-    if (local_flow_context->client_detached)
+    if (local_flow_context->client_detached) {
         // Since the hook client is detached, exit the function.
         goto Exit;
+    }
 
     attached_client = (net_ebpf_extension_hook_client_t*)filter_context->base.client_context;
-    if (attached_client == NULL)
+    if (attached_client == NULL) {
         // This means that the eBPF program is detached and there is nothing to notify.
         goto Exit;
+    }
 
     if (!net_ebpf_extension_hook_client_enter_rundown(attached_client)) {
         attached_client = NULL;
@@ -558,17 +570,20 @@ net_ebpf_extension_sock_ops_flow_delete(uint16_t layer_id, uint32_t callout_id, 
     // Invoke eBPF program with connection deleted socket event.
     sock_ops_context = &local_flow_context->context;
     sock_ops_context->op = BPF_SOCK_OPS_CONNECTION_DELETED_CB;
-    if (net_ebpf_extension_hook_invoke_program(attached_client, sock_ops_context, &result) != EBPF_SUCCESS)
+    if (net_ebpf_extension_hook_invoke_program(attached_client, sock_ops_context, &result) != EBPF_SUCCESS) {
         goto Exit;
+    }
 
 Exit:
     if (filter_context) {
         DEREFERENCE_FILTER_CONTEXT(&filter_context->base);
     }
-    if (local_flow_context != NULL)
+    if (local_flow_context != NULL) {
         ExFreePool(local_flow_context);
-    if (attached_client != NULL)
+    }
+    if (attached_client != NULL) {
         net_ebpf_extension_hook_client_leave_rundown(attached_client);
+    }
 }
 
 static ebpf_result_t

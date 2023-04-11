@@ -34,7 +34,7 @@ jobs:
       PLATFORM_TOOLSET: v143
 
     steps:
-    - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+    - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3
       with:
         submodules: 'recursive'
 
@@ -45,7 +45,7 @@ jobs:
         echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Cache nuget packages
-      uses: actions/cache@6998d139ddd3e68c71e9e398d8e40b71a2f39812
+      uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8
       env:
         cache-name: cache-nuget-modules
       with:

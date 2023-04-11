@@ -32,6 +32,22 @@ typedef struct _ebpf_free_memory
 
 typedef std::unique_ptr<uint8_t, ebpf_free_memory_t> ebpf_memory_t;
 
+typedef struct _close_bpf_link
+{
+    void
+    operator()(_In_opt_ _Post_invalid_ bpf_link* link)
+    {
+        if (link != nullptr) {
+            if (ebpf_link_detach(link) != EBPF_SUCCESS) {
+                throw std::runtime_error("ebpf_link_detach failed");
+            }
+            ebpf_link_close(link);
+        }
+    }
+} close_bpf_link_t;
+
+typedef std::unique_ptr<bpf_link, close_bpf_link_t> bpf_link_ptr;
+
 extern bool _ebpf_platform_is_preemptible;
 
 #ifdef __cplusplus
@@ -69,6 +85,24 @@ typedef class _hook_helper
 {
   public:
     _hook_helper(ebpf_attach_type_t attach_type) : _attach_type(attach_type) {}
+
+    _Must_inspect_result_ ebpf_result_t
+    attach_link(
+        fd_t program_fd,
+        _In_reads_bytes_opt_(attach_parameters_size) void* attach_parameters,
+        size_t attach_parameters_size,
+        _Out_ bpf_link_ptr* unique_link)
+    {
+        bpf_link* link = nullptr;
+        ebpf_result_t result;
+
+        result = ebpf_program_attach_by_fd(program_fd, &_attach_type, attach_parameters, attach_parameters_size, &link);
+        if (result == EBPF_SUCCESS) {
+            unique_link->reset(link);
+        }
+
+        return result;
+    }
 
     _Must_inspect_result_ ebpf_result_t
     attach_link(
@@ -172,16 +206,69 @@ typedef class _single_instance_hook : public _hook_helper
 #pragma warning(pop)
     }
 
+    void
+    detach_and_close_link(_Inout_ bpf_link_ptr* unique_link)
+    {
+        bpf_link* link = unique_link->release();
+        detach_link(link);
+        close_link(link);
+    }
+
     _Must_inspect_result_ ebpf_result_t
-    fire(_Inout_ void* context, _Out_ int* result)
+    fire(_Inout_ void* context, _Out_ uint32_t* result)
     {
         if (client_binding_context == nullptr) {
             return EBPF_EXTENSION_FAILED_TO_LOAD;
         }
-        ebpf_result_t (*invoke_program)(_In_ const void* link, _Inout_ void* context, _Out_ int* result) =
+        ebpf_result_t (*invoke_program)(_In_ const void* link, _Inout_ void* context, _Out_ uint32_t* result) =
             reinterpret_cast<decltype(invoke_program)>(client_dispatch_table->function[0]);
 
         return invoke_program(client_binding_context, context, result);
+    }
+
+    _Must_inspect_result_ ebpf_result_t
+    batch_begin(size_t state_size, _Out_writes_(state_size) void* state)
+    {
+        if (client_binding_context == nullptr) {
+            return EBPF_EXTENSION_FAILED_TO_LOAD;
+        }
+
+        ebpf_result (*batch_begin_function)(
+            _In_ const void* extension_client_binding_context,
+            size_t state_size,
+            _In_reads_bytes_(state_size) void* state);
+
+        batch_begin_function = reinterpret_cast<decltype(batch_begin_function)>(client_dispatch_table->function[1]);
+
+        return batch_begin_function(client_binding_context, state_size, state);
+    }
+
+    _Must_inspect_result_ ebpf_result_t
+    batch_invoke(_Inout_ void* program_context, _Out_ uint32_t* result, _In_ const void* state)
+    {
+        if (client_binding_context == nullptr) {
+            return EBPF_EXTENSION_FAILED_TO_LOAD;
+        }
+
+        ebpf_result_t (*batch_invoke_function)(
+            _In_ const void* extension_client_binding_context,
+            _Inout_ void* program_context,
+            _Out_ uint32_t* result,
+            _In_ const void* state);
+        batch_invoke_function = reinterpret_cast<decltype(batch_invoke_function)>(client_dispatch_table->function[2]);
+        return batch_invoke_function(client_binding_context, program_context, result, state);
+    }
+
+    _Must_inspect_result_ ebpf_result_t
+    batch_end(_In_ const void* state)
+    {
+        if (client_binding_context == nullptr) {
+            return EBPF_EXTENSION_FAILED_TO_LOAD;
+        }
+
+        ebpf_result_t (*batch_end_function)(_In_ const void* extension_client_binding_context, _In_ const void* state);
+        batch_end_function = reinterpret_cast<decltype(batch_end_function)>(client_dispatch_table->function[3]);
+        return batch_end_function(client_binding_context, state);
     }
 
   private:
@@ -246,9 +333,9 @@ typedef class xdp_md_helper : public xdp_md_t
     {
         original_nbl = &_original_nbl_storage;
         _original_nbl_storage.FirstNetBuffer = &_original_nb;
-        _original_nb.DataLength = (ULONG)packet.size();
+        _original_nb.DataLength = (unsigned long)packet.size();
         _original_nb.MdlChain = &_original_mdl;
-        _original_mdl.byte_count = (ULONG)packet.size();
+        _original_mdl.byte_count = (unsigned long)packet.size();
         _original_mdl.start_va = packet.data();
     }
 

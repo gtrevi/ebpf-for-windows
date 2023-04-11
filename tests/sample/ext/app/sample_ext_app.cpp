@@ -11,10 +11,13 @@
 #include "program_helper.h"
 #include "sample_ext_app.h"
 #include "service_helper.h"
+#include "watchdog.h"
 
 #include <chrono>
 #include <mutex>
 #include <thread>
+
+CATCH_REGISTER_LISTENER(_watchdog)
 
 #define SAMPLE_PATH ""
 
@@ -54,8 +57,9 @@ struct _sample_extension_helper
 
     ~_sample_extension_helper()
     {
-        if (device_handle != INVALID_HANDLE_VALUE)
+        if (device_handle != INVALID_HANDLE_VALUE) {
             ::CloseHandle(device_handle);
+        }
     }
 
     void
@@ -72,7 +76,7 @@ struct _sample_extension_helper
                 static_cast<uint32_t>(input_buffer.size()),
                 output_buffer.data(),
                 static_cast<uint32_t>(output_buffer.size()),
-                (DWORD*)&count_of_bytes_returned,
+                (unsigned long*)&count_of_bytes_returned,
                 nullptr) == TRUE);
     }
 

@@ -7,14 +7,25 @@
 #include "store_helper_internal.h"
 #include "utilities.hpp"
 
-extern ebpf_registry_key_t root_registry_key;
+ebpf_registry_key_t root_registry_key_current_user = HKEY_CURRENT_USER;
+ebpf_registry_key_t root_registry_key_local_machine = HKEY_LOCAL_MACHINE;
+// TODO: Issue #1231 Change to using HKEY_LOCAL_MACHINE
+ebpf_registry_key_t ebpf_root_registry_key = HKEY_CURRENT_USER;
 
 static uint32_t
 _open_ebpf_store_key(_Out_ ebpf_registry_key_t* store_key)
 {
     // Open root registry path.
     *store_key = nullptr;
-    return open_registry_key(root_registry_key, EBPF_STORE_REGISTRY_PATH, KEY_READ, store_key);
+
+    // First try to open the HKLM registry key.
+    uint32_t result = open_registry_key(root_registry_key_local_machine, EBPF_STORE_REGISTRY_PATH, KEY_READ, store_key);
+    if (result != ERROR_SUCCESS) {
+        // Failed to open ebpf store path in HKLM. Fall back to HKCU.
+        result = open_registry_key(root_registry_key_current_user, EBPF_STORE_REGISTRY_PATH, KEY_READ, store_key);
+    }
+
+    return result;
 }
 
 static ebpf_result_t
@@ -197,8 +208,8 @@ _load_program_data_information(
                 nullptr,
                 nullptr,
                 nullptr,
-                (LPDWORD)&max_helpers_count,
-                (LPDWORD)&max_helper_name_size,
+                (unsigned long*)&max_helpers_count,
+                (unsigned long*)&max_helper_name_size,
                 nullptr,
                 nullptr,
                 nullptr,
@@ -240,7 +251,7 @@ _load_program_data_information(
                 memset(helper_name, 0, (max_helper_name_size) * sizeof(wchar_t));
                 key_size = (max_helper_name_size - 1) * sizeof(wchar_t);
                 status = RegEnumKeyEx(
-                    helper_key, index, helper_name, (LPDWORD)&key_size, nullptr, nullptr, nullptr, nullptr);
+                    helper_key, index, helper_name, (unsigned long*)&key_size, nullptr, nullptr, nullptr, nullptr);
                 if (status != ERROR_SUCCESS) {
                     result = win32_error_code_to_ebpf_result(status);
                     goto Exit;
@@ -289,7 +300,7 @@ ebpf_store_load_program_information(
     ebpf_result_t result = EBPF_SUCCESS;
     HKEY program_data_key = nullptr;
     wchar_t program_type_key[GUID_STRING_LENGTH + 1];
-    DWORD key_size = 0;
+    unsigned long key_size = 0;
     uint32_t index = 0;
     ebpf_registry_key_t store_key = nullptr;
     std::vector<ebpf_program_info_t*> program_info_array;
@@ -363,7 +374,15 @@ ebpf_store_load_program_information(
 Exit:
     if (result != EBPF_SUCCESS) {
         ebpf_free(*program_info);
+
+        // Deallocate the dynamic memory in the program_info_array vector.
+        if (program_info_array.size() > 0) {
+            for (auto program_data : program_info_array) {
+                ebpf_program_info_free(program_data);
+            }
+        }
     }
+
     if (program_data_key) {
         close_registry_key(program_data_key);
     }
@@ -486,7 +505,7 @@ ebpf_store_load_section_information(
     ebpf_result_t result = EBPF_SUCCESS;
     HKEY section_data_key = nullptr;
     wchar_t section_name_key[MAX_PATH];
-    DWORD key_size = 0;
+    unsigned long key_size = 0;
     uint32_t index = 0;
     ebpf_registry_key_t store_key = nullptr;
     std::vector<ebpf_section_definition_t*> section_info_array;
@@ -558,6 +577,15 @@ ebpf_store_load_section_information(
 Exit:
     if (result != EBPF_SUCCESS) {
         ebpf_free(*section_info);
+        // Deallocate the dynamic memory in the section_info_array vector.
+        if (section_info_array.size() > 0) {
+            for (auto section_data : section_info_array) {
+                ebpf_free(section_data->program_type);
+                ebpf_free(section_data->attach_type);
+                ebpf_free(const_cast<char*>(section_data->section_prefix));
+                ebpf_free(section_data);
+            }
+        }
     }
     if (section_data_key) {
         close_registry_key(section_data_key);
@@ -574,7 +602,7 @@ ebpf_store_load_global_helper_information(
     ebpf_result_t result = EBPF_SUCCESS;
     HKEY global_helpers_key = nullptr;
     wchar_t* helper_name = nullptr;
-    DWORD key_size = 0;
+    unsigned long key_size = 0;
     uint32_t max_helper_name_size = 0;
     uint32_t max_helpers_count = 0;
     ebpf_helper_function_prototype_t* helper_prototype = nullptr;
@@ -609,8 +637,8 @@ ebpf_store_load_global_helper_information(
         nullptr,
         nullptr,
         nullptr,
-        (LPDWORD)&max_helpers_count,
-        (LPDWORD)&max_helper_name_size,
+        (unsigned long*)&max_helpers_count,
+        (unsigned long*)&max_helper_name_size,
         nullptr,
         nullptr,
         nullptr,
@@ -680,5 +708,63 @@ Exit:
         }
     }
     ebpf_free(helper_name);
+    return result;
+}
+
+_Must_inspect_result_ ebpf_result_t
+ebpf_store_clear(_In_ const ebpf_registry_key_t root_key_path)
+{
+    ebpf_registry_key_t root_handle = {0};
+    ebpf_registry_key_t provider_handle = {0};
+    uint32_t status;
+    ebpf_result_t result = EBPF_FAILED;
+
+    // Open root registry key.
+    status = open_registry_key(root_key_path, EBPF_ROOT_RELATIVE_PATH, REG_CREATE_FLAGS, &root_handle);
+    if (status != ERROR_SUCCESS) {
+        if (status == ERROR_FILE_NOT_FOUND) {
+            result = EBPF_SUCCESS;
+        } else {
+            result = win32_error_code_to_ebpf_result(status);
+        }
+        goto Exit;
+    }
+
+    // Open "providers" registry key.
+    status = open_registry_key(root_handle, EBPF_PROVIDERS_REGISTRY_PATH, REG_CREATE_FLAGS, &provider_handle);
+    if (status != ERROR_SUCCESS) {
+        if (status == ERROR_FILE_NOT_FOUND) {
+            result = EBPF_SUCCESS;
+        } else {
+            result = win32_error_code_to_ebpf_result(status);
+        }
+        goto Exit;
+    }
+
+    // Delete subtree of provider reg key.
+    status = delete_registry_tree(provider_handle, NULL);
+    if (status != ERROR_SUCCESS) {
+        result = win32_error_code_to_ebpf_result(status);
+        goto Exit;
+    }
+    close_registry_key(provider_handle);
+    provider_handle = nullptr;
+
+    status = delete_registry_key(root_handle, EBPF_PROVIDERS_REGISTRY_PATH);
+    if (status != ERROR_SUCCESS) {
+        result = win32_error_code_to_ebpf_result(status);
+        goto Exit;
+    }
+
+    result = EBPF_SUCCESS;
+
+Exit:
+    if (provider_handle) {
+        close_registry_key(provider_handle);
+    }
+    if (root_handle) {
+        close_registry_key(root_handle);
+    }
+
     return result;
 }

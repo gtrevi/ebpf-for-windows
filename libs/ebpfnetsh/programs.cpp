@@ -57,13 +57,15 @@ _prog_type_supports_interface(bpf_prog_type prog_type)
 }
 
 _Must_inspect_result_ ebpf_result_t
-_process_interface_parameter(_In_ const LPWSTR interface_parameter, bpf_prog_type prog_type, _Out_ uint32_t* if_index)
+_process_interface_parameter(
+    _In_ const _Null_terminated_ wchar_t* interface_parameter, bpf_prog_type prog_type, _Out_ uint32_t* if_index)
 {
     ebpf_result_t result = EBPF_SUCCESS;
     if (_prog_type_supports_interface(prog_type)) {
         result = parse_if_index(interface_parameter, if_index);
-        if (result != EBPF_SUCCESS)
+        if (result != EBPF_SUCCESS) {
             std::cerr << "Interface parameter is invalid." << std::endl;
+        }
     } else {
         std::cerr << "Interface parameter is not allowed for program types that don't support interfaces." << std::endl;
         result = EBPF_INVALID_ARGUMENT;
@@ -77,6 +79,19 @@ struct _program_unloader
     ~_program_unloader() { bpf_object__close(object); }
 };
 
+struct _link_deleter
+{
+    struct bpf_link* link;
+    ~_link_deleter()
+    {
+        if (link != nullptr) {
+            ebpf_link_close(link);
+        }
+    }
+};
+
+// The following function uses windows specific input type to match
+// definition of "FN_HANDLE_CMD" in public file of NetSh.h
 unsigned long
 handle_ebpf_add_program(
     LPCWSTR machine, LPWSTR* argv, DWORD current_index, DWORD argc, DWORD flags, LPCVOID data, BOOL* done)
@@ -100,9 +115,9 @@ handle_ebpf_add_program(
     const int PINNED_INDEX = 4;
     const int EXECUTION_INDEX = 5;
 
-    ULONG tag_type[_countof(tags)] = {0};
+    unsigned long tag_type[_countof(tags)] = {0};
 
-    ULONG status =
+    unsigned long status =
         PreprocessCommand(nullptr, argv, current_index, argc, tags, _countof(tags), 0, _countof(tags), tag_type);
 
     std::string filename;
@@ -111,7 +126,7 @@ handle_ebpf_add_program(
     bpf_attach_type attach_type = BPF_ATTACH_TYPE_UNSPEC;
     pinned_type_t pinned_type = PT_FIRST; // Like bpftool, we default to pin first.
     ebpf_execution_type_t execution = EBPF_EXECUTION_JIT;
-    LPWSTR interface_parameter = nullptr;
+    wchar_t* interface_parameter = nullptr;
 
     for (int i = 0; (status == NO_ERROR) && ((i + current_index) < argc); i++) {
         switch (tag_type[i]) {
@@ -139,7 +154,7 @@ handle_ebpf_add_program(
                 argv[current_index + i],
                 _countof(_ebpf_pinned_type_enum),
                 _ebpf_pinned_type_enum,
-                (PULONG)&pinned_type);
+                (unsigned long*)&pinned_type);
             break;
         case EXECUTION_INDEX:
             status = MatchEnumTag(
@@ -147,7 +162,7 @@ handle_ebpf_add_program(
                 argv[current_index + i],
                 _countof(_ebpf_execution_type_enum),
                 _ebpf_execution_type_enum,
-                (PULONG)&execution);
+                (unsigned long*)&execution);
             break;
         default:
             status = ERROR_INVALID_SYNTAX;
@@ -185,7 +200,7 @@ handle_ebpf_add_program(
     program_fd = bpf_program__fd(program);
 
     // Program loaded. Populate the unloader with object pointer, such that
-    // the program gets unloaded automatically, if it fails to get attached.
+    // the program gets unloaded automatically, if this function fails somewhere.
     struct _program_unloader unloader = {object};
 
     ebpf_result_t result;
@@ -207,10 +222,11 @@ handle_ebpf_add_program(
     if (result != EBPF_SUCCESS) {
         std::cerr << "error " << result << ": could not attach program" << std::endl;
         return ERROR_SUPPRESS_OUTPUT;
-    } else {
-        // Program successfully attached, reset unloader.
-        unloader.object = nullptr;
     }
+
+    // Link attached. Populate the deleter with link pointer, such that link
+    // object is closed when the function returns.
+    struct _link_deleter link_deleter = {link};
 
     if (pinned_type == PT_FIRST) {
         // The pinpath specified is like a "file" under which to pin programs.
@@ -239,8 +255,8 @@ handle_ebpf_add_program(
         return ERROR_SUPPRESS_OUTPUT;
     }
     std::cout << "Loaded with ID " << info.id << std::endl;
+    unloader.object = nullptr;
 
-    ebpf_link_close(link);
     _ebpf_netsh_objects.push_back(object);
 
     return ERROR_SUCCESS;
@@ -248,11 +264,11 @@ handle_ebpf_add_program(
 
 // Given a program ID, unpin the program from all paths to which
 // it is currently pinned.
-static DWORD
+static unsigned long
 _unpin_program_by_id(ebpf_id_t id)
 {
     ebpf_result_t result;
-    DWORD status = NO_ERROR;
+    unsigned long status = NO_ERROR;
 
     // Read all pin paths.  Currently we get them in a non-deterministic
     // order, so we use a std::set to sort them in code point order.
@@ -307,7 +323,9 @@ _find_object_with_program(ebpf_id_t id)
     return _ebpf_netsh_objects.end();
 }
 
-DWORD
+// The following function uses windows specific type to match
+// definition of "FN_HANDLE_CMD" in public file of NetSh.h
+unsigned long
 handle_ebpf_delete_program(
     LPCWSTR machine, LPWSTR* argv, DWORD current_index, DWORD argc, DWORD flags, LPCVOID data, BOOL* done)
 {
@@ -320,9 +338,9 @@ handle_ebpf_delete_program(
         {TOKEN_ID, NS_REQ_PRESENT, FALSE},
     };
     const int ID_INDEX = 0;
-    ULONG tag_type[_countof(tags)] = {0};
+    unsigned long tag_type[_countof(tags)] = {0};
 
-    ULONG status =
+    unsigned long status =
         PreprocessCommand(nullptr, argv, current_index, argc, tags, _countof(tags), 0, _countof(tags), tag_type);
 
     ebpf_id_t id = EBPF_ID_NONE;
@@ -370,7 +388,7 @@ handle_ebpf_delete_program(
 
 _Must_inspect_result_ ebpf_result_t
 _ebpf_program_attach_by_id(
-    ebpf_id_t program_id, ebpf_attach_type_t attach_type, _In_opt_ const LPWSTR interface_parameter)
+    ebpf_id_t program_id, ebpf_attach_type_t attach_type, _In_opt_z_ const wchar_t* interface_parameter)
 {
     ebpf_result_t result = EBPF_SUCCESS;
     uint32_t if_index;
@@ -400,8 +418,9 @@ _ebpf_program_attach_by_id(
     if (result == EBPF_SUCCESS) {
         ebpf_result_t local_result =
             ebpf_program_attach_by_fd(program_fd, &attach_type, attach_parameters, attach_parameters_size, &link);
-        if (local_result == EBPF_SUCCESS)
+        if (local_result == EBPF_SUCCESS) {
             ebpf_link_close(link);
+        }
     }
 
     Platform::_close(program_fd);
@@ -435,7 +454,9 @@ _ebpf_program_detach_by_id(ebpf_id_t program_id)
     return ERROR_NOT_FOUND;
 }
 
-DWORD
+// The following function uses windows specific type as an input to match
+// definition of "FN_HANDLE_CMD" in public file of NetSh.h
+unsigned long
 handle_ebpf_set_program(
     LPCWSTR machine, LPWSTR* argv, DWORD current_index, DWORD argc, DWORD flags, LPCVOID data, BOOL* done)
 {
@@ -454,10 +475,10 @@ handle_ebpf_set_program(
     const int PINPATH_INDEX = 2;
     const int INTERFACE_INDEX = 3;
 
-    ULONG tag_type[_countof(tags)] = {0};
-    PWSTR interface_parameter = nullptr;
+    unsigned long tag_type[_countof(tags)] = {0};
+    wchar_t* interface_parameter = nullptr;
 
-    ULONG status = PreprocessCommand(
+    unsigned long status = PreprocessCommand(
         nullptr,
         argv,
         current_index,
@@ -545,7 +566,9 @@ handle_ebpf_set_program(
     return ERROR_OKAY;
 }
 
-DWORD
+// The following function uses windows specific type as an input to match
+// definition of "FN_HANDLE_CMD" in public file of NetSh.h
+unsigned long
 handle_ebpf_show_programs(
     LPCWSTR machine, LPWSTR* argv, DWORD current_index, DWORD argc, DWORD flags, LPCVOID data, BOOL* done)
 {
@@ -571,9 +594,9 @@ handle_ebpf_show_programs(
     const int SECTION_INDEX = 5;
     const int ID_INDEX = 6;
 
-    ULONG tag_type[_countof(tags)] = {0};
+    unsigned long tag_type[_countof(tags)] = {0};
 
-    ULONG status =
+    unsigned long status =
         PreprocessCommand(nullptr, argv, current_index, argc, tags, _countof(tags), 0, _countof(tags), tag_type);
 
     ebpf_program_type_t program_type = EBPF_PROGRAM_TYPE_UNSPECIFIED;
@@ -601,7 +624,7 @@ handle_ebpf_show_programs(
                 argv[current_index + i],
                 _countof(_boolean_constraint_enum),
                 _boolean_constraint_enum,
-                (PULONG)&attached);
+                (unsigned long*)&attached);
             if (status != NO_ERROR) {
                 status = ERROR_INVALID_PARAMETER;
             }
@@ -612,13 +635,14 @@ handle_ebpf_show_programs(
                 argv[current_index + i],
                 _countof(_boolean_constraint_enum),
                 _boolean_constraint_enum,
-                (PULONG)&pinned);
+                (unsigned long*)&pinned);
             if (status != NO_ERROR) {
                 status = ERROR_INVALID_PARAMETER;
             }
             break;
         case LEVEL_INDEX:
-            status = MatchEnumTag(NULL, argv[current_index + i], _countof(g_LevelEnum), g_LevelEnum, (PULONG)&level);
+            status =
+                MatchEnumTag(NULL, argv[current_index + i], _countof(g_LevelEnum), g_LevelEnum, (unsigned long*)&level);
             if (status != NO_ERROR) {
                 status = ERROR_INVALID_PARAMETER;
             }

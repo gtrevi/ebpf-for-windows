@@ -15,6 +15,19 @@
 
 #define PAGE_SIZE 4096
 
+typedef struct _free_trampoline_table
+{
+    void
+    operator()(_In_opt_ _Post_invalid_ ebpf_trampoline_table_t* table)
+    {
+        if (table != nullptr) {
+            ebpf_free_trampoline_table(table);
+        }
+    }
+} free_trampoline_table_t;
+
+typedef std::unique_ptr<ebpf_trampoline_table_t, free_trampoline_table_t> ebpf_trampoline_table_ptr;
+
 typedef class _ebpf_async_wrapper
 {
   public:
@@ -666,9 +679,9 @@ TEST_CASE("program", "[execution_context]")
 
     REQUIRE(ebpf_program_initialize(program.get(), &program_parameters) == EBPF_SUCCESS);
 
-    const ebpf_program_type_t* returned_program_type = ebpf_program_type_uuid(program.get());
+    ebpf_program_type_t returned_program_type = ebpf_program_type_uuid(program.get());
     REQUIRE(
-        memcmp(&program_parameters.program_type, returned_program_type, sizeof(program_parameters.program_type)) == 0);
+        memcmp(&program_parameters.program_type, &returned_program_type, sizeof(program_parameters.program_type)) == 0);
 
     REQUIRE(ebpf_program_get_program_info(program.get(), &program_info) == EBPF_SUCCESS);
     REQUIRE(program_info != nullptr);
@@ -680,7 +693,7 @@ TEST_CASE("program", "[execution_context]")
     REQUIRE(ebpf_program_associate_maps(program.get(), maps, EBPF_COUNT_OF(maps)) == EBPF_SUCCESS);
     REQUIRE(((ebpf_core_object_t*)map.get())->base.reference_count == 2);
 
-    ebpf_trampoline_table_t* table = NULL;
+    ebpf_trampoline_table_ptr table;
     ebpf_result_t (*test_function)();
     auto provider_function1 = []() { return (ebpf_result_t)TEST_FUNCTION_RETURN; };
     ebpf_result_t (*function_pointer1)() = provider_function1;
@@ -689,13 +702,19 @@ TEST_CASE("program", "[execution_context]")
     ebpf_helper_function_addresses_t helper_function_addresses = {
         EBPF_COUNT_OF(helper_functions), (uint64_t*)helper_functions};
 
-    REQUIRE(ebpf_allocate_trampoline_table(1, &table) == EBPF_SUCCESS);
+    {
+        ebpf_trampoline_table_t* local_table = nullptr;
+        REQUIRE(ebpf_allocate_trampoline_table(1, &local_table) == EBPF_SUCCESS);
+        table.reset(local_table);
+    }
     REQUIRE(
         ebpf_update_trampoline_table(
-            table, EBPF_COUNT_OF(test_function_ids), test_function_ids, &helper_function_addresses) == EBPF_SUCCESS);
+            table.get(), EBPF_COUNT_OF(test_function_ids), test_function_ids, &helper_function_addresses) ==
+        EBPF_SUCCESS);
     REQUIRE(
         ebpf_get_trampoline_function(
-            table, EBPF_MAX_GENERAL_HELPER_FUNCTION + 1, reinterpret_cast<void**>(&test_function)) == EBPF_SUCCESS);
+            table.get(), EBPF_MAX_GENERAL_HELPER_FUNCTION + 1, reinterpret_cast<void**>(&test_function)) ==
+        EBPF_SUCCESS);
 
     // Size of the actual function is unknown, but we know the allocation is on page granularity.
     REQUIRE(
@@ -704,7 +723,9 @@ TEST_CASE("program", "[execution_context]")
         EBPF_SUCCESS);
     uint32_t result = 0;
     bind_md_t ctx{0};
-    ebpf_program_invoke(program.get(), &ctx, &result);
+    ebpf_execution_context_state_t state{};
+    ebpf_get_execution_context_state(&state);
+    ebpf_program_invoke(program.get(), &ctx, &result, &state);
     REQUIRE(result == TEST_FUNCTION_RETURN);
 
     std::vector<uint8_t> input_buffer(10);
@@ -798,7 +819,7 @@ TEST_CASE("program", "[execution_context]")
 
     link.reset();
 
-    ebpf_free_trampoline_table(table);
+    ebpf_free_trampoline_table(table.release());
 }
 
 TEST_CASE("name size", "[execution_context]")
@@ -1633,7 +1654,7 @@ TEST_CASE("EBPF_OPERATION_LINK_PROGRAM", "[execution_context][negative]")
 
     // No provider.
     link_program_request->program_handle = program_handles[0];
-    REQUIRE(invoke_protocol(EBPF_OPERATION_LINK_PROGRAM, request, reply) == EBPF_EXTENSION_FAILED_TO_LOAD);
+    REQUIRE(invoke_protocol(EBPF_OPERATION_LINK_PROGRAM, request, reply) == EBPF_INVALID_ARGUMENT);
 }
 
 TEST_CASE("EBPF_OPERATION_GET_EC_FUNCTION", "[execution_context][negative]")

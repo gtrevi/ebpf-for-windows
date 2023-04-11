@@ -8,6 +8,7 @@
 #include "catch_wrapper.hpp"
 #include "ebpf_async.h"
 #include "ebpf_core.h"
+#include "ebpf_fault_injection.h"
 #include "ebpf_platform.h"
 #include "hash.h"
 #include "helpers.h"
@@ -133,9 +134,10 @@ class duplicate_handles_table_t
             _rundown_in_progress = true;
         }
         lock.unlock();
-        if (duplicates_pending)
+        if (duplicates_pending) {
             // Wait for at most 1 second for all duplicate handles to be closed.
             REQUIRE(all_duplicate_handles_closed_callback.wait_for(1s) == std::future_status::ready);
+        }
 
         lock.lock();
         _rundown_in_progress = false;
@@ -214,7 +216,7 @@ GlueCreateFileW(
     return (HANDLE)CREATE_FILE_HANDLE;
 }
 
-BOOL
+bool
 GlueCloseHandle(HANDLE object_handle)
 {
     if (object_handle == (HANDLE)CREATE_FILE_HANDLE) {
@@ -233,14 +235,14 @@ GlueCloseHandle(HANDLE object_handle)
     return TRUE;
 }
 
-BOOL
+bool
 GlueDuplicateHandle(
     HANDLE source_process_handle,
     HANDLE source_handle,
     HANDLE target_process_handle,
     _Out_ HANDLE* target_handle,
     unsigned long desired_access,
-    BOOL inherit_handle,
+    bool inherit_handle,
     unsigned long options)
 {
     UNREFERENCED_PARAMETER(source_process_handle);
@@ -263,13 +265,14 @@ _complete_overlapped(_Inout_ void* context, size_t output_buffer_length, ebpf_re
     SetEvent(overlapped->hEvent);
 }
 
-BOOL
+bool
 GlueCancelIoEx(_In_ HANDLE file_handle, _In_opt_ OVERLAPPED* overlapped)
 {
     UNREFERENCED_PARAMETER(file_handle);
-    BOOL return_value = FALSE;
-    if (overlapped != nullptr)
+    bool return_value = FALSE;
+    if (overlapped != nullptr) {
         return_value = ebpf_core_cancel_protocol_handler(overlapped);
+    }
     return return_value;
 }
 
@@ -377,7 +380,7 @@ _preprocess_ioctl(_In_ const ebpf_operation_header_t* user_request)
     }
 }
 
-BOOL
+bool
 GlueDeviceIoControl(
     HANDLE device_handle,
     unsigned long io_control_code,
@@ -405,8 +408,9 @@ GlueDeviceIoControl(
     void* local_output_buffer = nullptr;
 
     result = ebpf_core_get_protocol_handler_properties(request_id, &minimum_request_size, &minimum_reply_size, &async);
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Fail;
+    }
 
     if (user_request->length < minimum_request_size) {
         result = EBPF_INVALID_ARGUMENT;
@@ -454,8 +458,9 @@ GlueDeviceIoControl(
         memcpy(user_reply, sharedBuffer.data(), output_buffer_size);
     }
 
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Fail;
+    }
 
     if (user_reply) {
         *bytes_returned = user_reply->length;
@@ -571,13 +576,13 @@ _test_helper_end_to_end::_test_helper_end_to_end()
 {
     if (_get_environment_variable_as_bool("EBPF_GENERATE_CORPUS")) {
         device_io_control_handler = [](HANDLE hDevice,
-                                       DWORD dwIoControlCode,
-                                       PVOID lpInBuffer,
-                                       DWORD nInBufferSize,
-                                       LPVOID lpOutBuffer,
-                                       DWORD nOutBufferSize,
-                                       PDWORD lpBytesReturned,
-                                       OVERLAPPED* lpOverlapped) -> BOOL {
+                                       unsigned long dwIoControlCode,
+                                       void* lpInBuffer,
+                                       unsigned long nInBufferSize,
+                                       void* lpOutBuffer,
+                                       unsigned long nOutBufferSize,
+                                       unsigned long* lpBytesReturned,
+                                       OVERLAPPED* lpOverlapped) -> bool {
             UNREFERENCED_PARAMETER(hDevice);
             UNREFERENCED_PARAMETER(dwIoControlCode);
             UNREFERENCED_PARAMETER(lpOutBuffer);
@@ -633,6 +638,13 @@ _test_helper_end_to_end::_test_helper_end_to_end()
     api_initialized = true;
 }
 
+_test_handle_helper::~_test_handle_helper()
+{
+    if (handle != ebpf_handle_invalid) {
+        GlueCloseHandle((HANDLE)handle);
+    }
+}
+
 static void
 _rundown_osfhandles()
 {
@@ -670,10 +682,12 @@ _test_helper_end_to_end::~_test_helper_end_to_end()
     _unload_all_native_modules();
 
     clear_program_info_cache();
-    if (api_initialized)
+    if (api_initialized) {
         ebpf_api_terminate();
-    if (ec_initialized)
+    }
+    if (ec_initialized) {
         ebpf_core_terminate();
+    }
 
     device_io_control_handler = nullptr;
     cancel_io_ex_handler = nullptr;
@@ -693,15 +707,28 @@ _test_helper_libbpf::_test_helper_libbpf()
 {
     ebpf_clear_thread_local_storage();
 
-    xdp_program_info = new program_info_provider_t(EBPF_PROGRAM_TYPE_XDP);
-    xdp_hook = new single_instance_hook_t(EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP);
+    try {
+        xdp_program_info = new program_info_provider_t(EBPF_PROGRAM_TYPE_XDP);
+        xdp_hook = new single_instance_hook_t(EBPF_PROGRAM_TYPE_XDP, EBPF_ATTACH_TYPE_XDP);
 
-    bind_program_info = new program_info_provider_t(EBPF_PROGRAM_TYPE_BIND);
-    bind_hook = new single_instance_hook_t(EBPF_PROGRAM_TYPE_BIND, EBPF_ATTACH_TYPE_BIND);
+        bind_program_info = new program_info_provider_t(EBPF_PROGRAM_TYPE_BIND);
+        bind_hook = new single_instance_hook_t(EBPF_PROGRAM_TYPE_BIND, EBPF_ATTACH_TYPE_BIND);
 
-    cgroup_sock_addr_program_info = new program_info_provider_t(EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR);
-    cgroup_inet4_connect_hook =
-        new single_instance_hook_t(EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR, EBPF_ATTACH_TYPE_CGROUP_INET4_CONNECT);
+        cgroup_sock_addr_program_info = new program_info_provider_t(EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR);
+        cgroup_inet4_connect_hook =
+            new single_instance_hook_t(EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR, EBPF_ATTACH_TYPE_CGROUP_INET4_CONNECT);
+    } catch (...) {
+        delete xdp_hook;
+        delete xdp_program_info;
+
+        delete bind_hook;
+        delete bind_program_info;
+
+        delete cgroup_inet4_connect_hook;
+        delete cgroup_sock_addr_program_info;
+
+        throw;
+    }
 }
 
 _test_helper_libbpf::~_test_helper_libbpf()
@@ -722,13 +749,10 @@ set_native_module_failures(bool expected)
     _expect_native_module_load_failures = expected;
 }
 
-extern bool
-ebpf_low_memory_test_in_progress();
-
 bool
 get_native_module_failures()
 {
-    return _expect_native_module_load_failures || ebpf_low_memory_test_in_progress();
+    return _expect_native_module_load_failures || ebpf_fault_injection_is_enabled();
 }
 
 _Must_inspect_result_ ebpf_result_t

@@ -45,7 +45,7 @@ on:
       vs_dev:
         required: false
         type: boolean
-      low_memory:
+      fault_injection:
         required: false
         type: boolean
       leak_detection:
@@ -84,7 +84,7 @@ jobs:
         cancel_others: 'false'
         paths_ignore: '["**.md", "**/docs/**"]'
 
-    - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+    - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3
       # Only check out source code if code coverage is being gathered.
       if: (inputs.code_coverage == true) && (steps.skip_check.outputs.should_skip != 'true')
       with:
@@ -92,7 +92,7 @@ jobs:
         ref: ${{ github.event.workflow_run.head_branch }}
 
     # Perform shallow checkout for self-hosted runner.
-    - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+    - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3
       if: (inputs.environment == 'ebpf_cicd_tests') && (steps.skip_check.outputs.should_skip != 'true')
       with:
         ref: ${{ github.event.workflow_run.head_branch }}
@@ -123,10 +123,18 @@ jobs:
       uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
       id: download_artifact
       with:
-        name: ${{inputs.build_artifact}} ${{matrix.configurations}}
-        path: ${{github.workspace}}/${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
+        name: ${{inputs.build_artifact}}-${{matrix.configurations}}
+        path: ${{github.workspace}}
+
+    - name: Extract build artifact
+      if: steps.skip_check.outputs.should_skip != 'true'
+      working-directory: ${{github.workspace}}
+      run: |
+        mkdir ${{env.BUILD_PLATFORM}}
+        Expand-Archive .\build-${{ matrix.configurations }}.zip -DestinationPath .\${{env.BUILD_PLATFORM}}
 
     - name: Create generated artifact folder
+      if: (steps.skip_check.outputs.should_skip != 'true')
       run: |
         mkdir ${{github.workspace}}\${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\Artifacts
 
@@ -164,24 +172,24 @@ jobs:
           OpenCppCoverage.exe -q --cover_children --sources %CD% --excluded_sources %CD%\external\Catch2 --export_type cobertura:ebpf_for_windows.xml --working_dir ${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}} -- ${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\${{env.TEST_COMMAND}}
 
     - name: Run test with Code Coverage and low resource simulation
-      if: (inputs.code_coverage == true) && (inputs.low_memory == true) && (steps.skip_check.outputs.should_skip != 'true')
-      id: run_test_with_code_coverage_in_low_memory
+      if: (inputs.code_coverage == true) && (inputs.fault_injection == true) && (steps.skip_check.outputs.should_skip != 'true')
+      id: run_test_with_code_coverage_in_fault_injection
       shell: cmd
       run: |
           set EBPF_ENABLE_WER_REPORT=yes
-          OpenCppCoverage.exe -q --cover_children --sources %CD% --excluded_sources %CD%\external\Catch2 --export_type cobertura:ebpf_for_windows.xml --working_dir ${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}} -- powershell.exe .\Test-LowMemory.ps1 ${{env.TEST_COMMAND}} 4
+          OpenCppCoverage.exe -q --cover_children --sources %CD% --excluded_sources %CD%\external\Catch2 --export_type cobertura:ebpf_for_windows.xml --working_dir ${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}} -- powershell.exe .\Test-FaultInjection.ps1 ${{env.TEST_COMMAND}} 4
 
     - name: Run test with low resource simulation
-      if: (inputs.code_coverage != true) && (inputs.low_memory == true) && (steps.skip_check.outputs.should_skip != 'true')
-      id: run_test_with_low_memory
+      if: (inputs.code_coverage != true) && (inputs.fault_injection == true) && (steps.skip_check.outputs.should_skip != 'true')
+      id: run_test_with_fault_injection
       shell: cmd
       working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
       run: |
           set EBPF_ENABLE_WER_REPORT=yes
-          powershell.exe .\Test-LowMemory.ps1 ${{env.TEST_COMMAND}} 16
+          powershell.exe .\Test-FaultInjection.ps1 ${{env.TEST_COMMAND}} 16
 
     - name: Run test with Code Coverage
-      if: (inputs.code_coverage == true) && (inputs.vs_dev != true) && (inputs.low_memory != true) && (steps.skip_check.outputs.should_skip != 'true')
+      if: (inputs.code_coverage == true) && (inputs.vs_dev != true) && (inputs.fault_injection != true) && (steps.skip_check.outputs.should_skip != 'true')
       id: run_test_with_code_coverage
       shell: cmd
       run: |
@@ -344,9 +352,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@18bf8ad2ca49c14cbb28b91346d626ccfb00c518 # v2.1.0
+        uses: step-security/harden-runner@1f99358870fe1c846a3ccba386cc2b2246836776 # v2.2.1
         with:
-          egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
 
       - id: skip_check
         uses: fkirc/skip-duplicate-actions@12aca0a884f6137d619d6a8a09fcc3406ced5281 # v5.3.0
@@ -354,7 +365,7 @@ jobs:
           cancel_others: 'false'
           paths_ignore: '["**.md", "**/docs/**"]'
 
-      - uses: actions/github-script@98814c53be79b1d30f795b907e553d8679345975
+      - uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
         if: (github.event_name == 'schedule') || (github.event_name == 'push') && (steps.skip_check.outputs.should_skip != 'true')
         env:
           TITLE: Workflow failed - ${{inputs.name}}

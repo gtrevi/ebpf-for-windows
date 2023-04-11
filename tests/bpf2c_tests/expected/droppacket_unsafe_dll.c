@@ -13,7 +13,7 @@
 #define metadata_table droppacket_unsafe##_metadata_table
 extern metadata_table_t metadata_table;
 
-BOOL APIENTRY
+bool APIENTRY
 DllMain(_In_ HMODULE hModule, unsigned int ul_reason_for_call, _In_ void* lpReserved)
 {
     UNREFERENCED_PARAMETER(hModule);
@@ -174,9 +174,9 @@ label_1:
     r0 = IMMEDIATE(2);
 label_2:
     // EBPF_OP_EXIT pc=19 dst=r0 src=r0 offset=0 imm=0
-#line 46 "sample/unsafe/droppacket_unsafe.c"
+#line 47 "sample/unsafe/droppacket_unsafe.c"
     return r0;
-#line 46 "sample/unsafe/droppacket_unsafe.c"
+#line 47 "sample/unsafe/droppacket_unsafe.c"
 }
 #pragma code_seg(pop)
 #line __LINE__ __FILE__
@@ -211,7 +211,7 @@ static void
 _get_version(_Out_ bpf2c_version_t* version)
 {
     version->major = 0;
-    version->minor = 6;
+    version->minor = 7;
     version->revision = 0;
 }
 
