@@ -1287,6 +1287,7 @@ TEST_CASE("map_pinning_test", "[end_to_end]")
     bpf_object__close(unique_object.release());
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) && !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
 {
     _test_helper_end_to_end test_helper;
@@ -1302,7 +1303,6 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
 
     program_info_provider_t xdp_program_info(EBPF_PROGRAM_TYPE_XDP);
 
-#if !defined(CONFIG_BPF_JIT_DISABLED)
     result = ebpf_program_load(
         SAMPLE_PATH "droppacket.o",
         BPF_PROG_TYPE_UNSPEC,
@@ -1316,9 +1316,7 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
         ebpf_free((void*)error_message);
     }
     REQUIRE(result == 0);
-#endif
 
-#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     result = ebpf_program_load(
         SAMPLE_PATH "droppacket.o",
         BPF_PROG_TYPE_UNSPEC,
@@ -1332,9 +1330,7 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
         ebpf_free((void*)error_message);
     }
     REQUIRE(result == 0);
-#endif
 
-#if !defined(CONFIG_BPF_JIT_DISABLED)
     ebpf_execution_type_t type;
     program_id = 0;
     REQUIRE(bpf_prog_get_next_id(program_id, &next_program_id) == 0);
@@ -1350,9 +1346,7 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
     REQUIRE(strcmp(section_name, "xdp") == 0);
     ebpf_free_string(section_name);
     section_name = nullptr;
-#endif
 
-#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     REQUIRE(bpf_prog_get_next_id(program_id, &next_program_id) == 0);
     program_id = next_program_id;
     program_fd = bpf_prog_get_fd_by_id(program_id);
@@ -1366,7 +1360,6 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
     ebpf_free_string(section_name);
     file_name = nullptr;
     section_name = nullptr;
-#endif
 
     REQUIRE(bpf_prog_get_next_id(program_id, &next_program_id) == -ENOENT);
 
@@ -1374,6 +1367,7 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
         bpf_object__close(unique_object[i].release());
     }
 }
+#endif
 
 TEST_CASE("pinned_map_enum", "[end_to_end]")
 {
@@ -1640,6 +1634,7 @@ TEST_CASE("create_map_name", "[end_to_end]")
     Platform::_close(map_fd);
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static void
 _xdp_reflect_packet_test(ebpf_execution_type_t execution_type, ADDRESS_FAMILY address_family)
 {
@@ -1680,7 +1675,9 @@ _xdp_reflect_packet_test(ebpf_execution_type_t execution_type, ADDRESS_FAMILY ad
         REQUIRE(memcmp(ipv6->DestinationAddress, &_test_source_ipv6, sizeof(ebpf::ipv6_address_t)) == 0);
     }
 }
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static void
 _xdp_encap_reflect_packet_test(ebpf_execution_type_t execution_type, ADDRESS_FAMILY address_family)
 {
@@ -1731,6 +1728,7 @@ _xdp_encap_reflect_packet_test(ebpf_execution_type_t execution_type, ADDRESS_FAM
         REQUIRE(memcmp(inner_ipv6->DestinationAddress, &_test_source_ipv6, sizeof(ebpf::ipv6_address_t)) == 0);
     }
 }
+#endif
 
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("printk", "[end_to_end]")
