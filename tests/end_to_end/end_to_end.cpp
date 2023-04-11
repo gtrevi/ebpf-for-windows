@@ -53,16 +53,37 @@ CATCH_REGISTER_LISTENER(_watchdog)
 #define BPF_ATTACH_TYPE_INVALID 100
 
 #define CONCAT(s1, s2) s1 s2
-#define DECLARE_ALL_TEST_CASES(_name, _group, _function) #if !defined(CONFIG_BPF_JIT_DISABLED)
-TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }
-#endif
-#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
-TEST_CASE(CONCAT(_name, "-interpret"), _group) { _function(EBPF_EXECUTION_INTERPRET); }
-#endif TEST_CASE(CONCAT(_name, "-native"), _group){_function(EBPF_EXECUTION_NATIVE); }
 
-#define DECLARE_JIT_TEST_CASES(_name, _group, _function) #if !defined(CONFIG_BPF_JIT_DISABLED)
-TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }
-#endif TEST_CASE(CONCAT(_name, "-native"), _group){_function(EBPF_EXECUTION_NATIVE); }
+#if !defined(CONFIG_BPF_JIT_DISABLED) && !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_ALL_TEST_CASES(_name, _group, _function)                                    \
+    TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }             \
+    TEST_CASE(CONCAT(_name, "-interpret"), _group) { _function(EBPF_EXECUTION_INTERPRET); } \
+    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#endif
+#if !defined(CONFIG_BPF_JIT_DISABLED) && defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_ALL_TEST_CASES(_name, _group, _function)                        \
+    TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); } \
+    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#endif
+#if defined(CONFIG_BPF_JIT_DISABLED) && !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_ALL_TEST_CASES(_name, _group, _function)                                    \
+    TEST_CASE(CONCAT(_name, "-interpret"), _group) { _function(EBPF_EXECUTION_INTERPRET); } \
+    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#endif
+#if defined(CONFIG_BPF_JIT_DISABLED) && defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_ALL_TEST_CASES(_name, _group, _function) \
+    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#endif
+
+#if !defined(CONFIG_BPF_JIT_DISABLED)
+#define DECLARE_JIT_TEST_CASES(_name, _group, _function)                        \
+    TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); } \
+    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#endif
+#if defined(CONFIG_BPF_JIT_DISABLED)
+#define DECLARE_JIT_TEST_CASES(_name, _group, _function) \
+    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#endif
 
 extern thread_local bool ebpf_non_preemptible;
 
