@@ -1029,23 +1029,21 @@ ebpf_program_load_code(
 
     switch (program->parameters.code_type) {
 
-#if defined(CONFIG_BPF_JIT_DISABLED)
     case EBPF_CODE_JIT:
+#if defined(CONFIG_BPF_JIT_DISABLED)
         result = EBPF_BLOCKED_BY_POLICY;
         break;
-#else
-    case EBPF_CODE_JIT:
 #endif
     case EBPF_CODE_NATIVE:
         result = _ebpf_program_load_machine_code(program, code_context, code, code_size);
         break;
 
     case EBPF_CODE_EBPF:
-#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#if defined(CONFIG_BPF_INTERPRETER_DISABLED)
+        result = EBPF_BLOCKED_BY_POLICY;
+#else
         result = _ebpf_program_load_byte_code(
             program, (const ebpf_instruction_t*)code, code_size / sizeof(ebpf_instruction_t));
-#else
-        result = EBPF_BLOCKED_BY_POLICY;
 #endif
         break;
 
