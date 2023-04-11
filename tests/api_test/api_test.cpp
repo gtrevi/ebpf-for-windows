@@ -152,6 +152,7 @@ struct _ebpf_program_load_test_parameters
     bpf_prog_type prog_type;
 };
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static void
 _test_multiple_programs_load(
     int program_count,
@@ -187,6 +188,7 @@ _test_multiple_programs_load(
         bpf_object__close(objects[i]);
     }
 }
+#endif
 
 static void
 _test_map_next_previous(const char* file_name, int expected_map_count)
