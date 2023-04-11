@@ -706,7 +706,7 @@ _ebpf_program_load_machine_code(
 #endif
 
     case EBPF_CODE_EBPF:
-#if defined(CONFIG_BPF_JIT_DISABLED)
+#if defined(CONFIG_BPF_INTERPRETER_DISABLED)
         return_value = EBPF_BLOCKED_BY_POLICY;
         goto Done;
 #endif
