@@ -285,9 +285,10 @@ TEST_CASE("pinned_map_enum", "[pinned_map_enum]") { ebpf_test_pinned_map_enum();
 #define INTERPRET_LOAD_RESULT 0
 #endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 // Load droppacket (JIT) without providing expected program type.
 DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
-
+#endif
 DECLARE_LOAD_TEST_CASE("droppacket.sys", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, 0);
 
 // Declare a duplicate test case. This will ensure that the earlier driver is actually unloaded,
@@ -297,20 +298,28 @@ DECLARE_DUPLICATE_LOAD_TEST_CASE("droppacket.sys", BPF_PROG_TYPE_UNSPEC, EBPF_EX
 // Load droppacket (ANY) without providing expected program type.
 DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_ANY, 0);
 
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 // Load droppacket (INTERPRET) without providing expected program type.
 DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
 
 // Load droppacket with providing expected program type.
 DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_XDP, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 // Load bindmonitor (JIT) without providing expected program type.
 DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
+#endif
 
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 // Load bindmonitor (INTERPRET) without providing expected program type.
 DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 // Load bindmonitor with providing expected program type.
 DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_BIND, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
+#endif
 
 // Try to load bindmonitor with providing wrong program type.
 DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_XDP, EBPF_EXECUTION_ANY, -EACCES);
@@ -318,6 +327,7 @@ DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_XDP, EBPF_EXECUTION_ANY, -
 // Try to load an unsafe program.
 DECLARE_LOAD_TEST_CASE("droppacket_unsafe.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_ANY, -EACCES);
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 // Try to load multiple programs of different program types
 TEST_CASE("test_ebpf_multiple_programs_load_jit")
 {
@@ -325,7 +335,9 @@ TEST_CASE("test_ebpf_multiple_programs_load_jit")
         {"droppacket.o", BPF_PROG_TYPE_XDP}, {"bindmonitor.o", BPF_PROG_TYPE_BIND}};
     _test_multiple_programs_load(_countof(test_parameters), test_parameters, EBPF_EXECUTION_JIT, 0);
 }
+#endif
 
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("test_ebpf_multiple_programs_load_interpret")
 {
     struct _ebpf_program_load_test_parameters test_parameters[] = {
@@ -333,6 +345,7 @@ TEST_CASE("test_ebpf_multiple_programs_load_interpret")
     _test_multiple_programs_load(
         _countof(test_parameters), test_parameters, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
 }
+#endif
 
 TEST_CASE("test_ebpf_program_next_previous", "[test_ebpf_program_next_previous]")
 {

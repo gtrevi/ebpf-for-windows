@@ -53,16 +53,16 @@ CATCH_REGISTER_LISTENER(_watchdog)
 #define BPF_ATTACH_TYPE_INVALID 100
 
 #define CONCAT(s1, s2) s1 s2
-#define DECLARE_ALL_TEST_CASES(_name, _group, _function)                              \
-                                                                                      \
-    TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }       \
-    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); } \
-    TEST_CASE(CONCAT(_name, "-interpret"), _group) { _function(EBPF_EXECUTION_INTERPRET); }
+#define DECLARE_ALL_TEST_CASES(_name, _group, _function) #if !defined(CONFIG_BPF_JIT_DISABLED)
+TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }
+#endif
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+TEST_CASE(CONCAT(_name, "-interpret"), _group) { _function(EBPF_EXECUTION_INTERPRET); }
+#endif TEST_CASE(CONCAT(_name, "-native"), _group){_function(EBPF_EXECUTION_NATIVE); }
 
-#define DECLARE_JIT_TEST_CASES(_name, _group, _function)                        \
-                                                                                \
-    TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); } \
-    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#define DECLARE_JIT_TEST_CASES(_name, _group, _function) #if !defined(CONFIG_BPF_JIT_DISABLED)
+TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }
+#endif TEST_CASE(CONCAT(_name, "-native"), _group){_function(EBPF_EXECUTION_NATIVE); }
 
 extern thread_local bool ebpf_non_preemptible;
 
@@ -1281,6 +1281,7 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
 
     program_info_provider_t xdp_program_info(EBPF_PROGRAM_TYPE_XDP);
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
     result = ebpf_program_load(
         SAMPLE_PATH "droppacket.o",
         BPF_PROG_TYPE_UNSPEC,
@@ -1294,7 +1295,9 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
         ebpf_free((void*)error_message);
     }
     REQUIRE(result == 0);
+#endif
 
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     result = ebpf_program_load(
         SAMPLE_PATH "droppacket.o",
         BPF_PROG_TYPE_UNSPEC,
@@ -1308,7 +1311,9 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
         ebpf_free((void*)error_message);
     }
     REQUIRE(result == 0);
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
     ebpf_execution_type_t type;
     program_id = 0;
     REQUIRE(bpf_prog_get_next_id(program_id, &next_program_id) == 0);
@@ -1324,7 +1329,9 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
     REQUIRE(strcmp(section_name, "xdp") == 0);
     ebpf_free_string(section_name);
     section_name = nullptr;
+#endif
 
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     REQUIRE(bpf_prog_get_next_id(program_id, &next_program_id) == 0);
     program_id = next_program_id;
     program_fd = bpf_prog_get_fd_by_id(program_id);
@@ -1338,6 +1345,7 @@ TEST_CASE("enumerate_and_query_programs", "[end_to_end]")
     ebpf_free_string(section_name);
     file_name = nullptr;
     section_name = nullptr;
+#endif
 
     REQUIRE(bpf_prog_get_next_id(program_id, &next_program_id) == -ENOENT);
 
@@ -1499,6 +1507,7 @@ TEST_CASE("explicit_detach", "[end_to_end]")
     REQUIRE(bpf_prog_get_next_id(0, &program_id) == -ENOENT);
 }
 
+#if !defined(CONFIG_BPF_INTERPRET_DISABLED)
 TEST_CASE("implicit_explicit_detach", "[end_to_end]")
 {
     // This test case does the following:
@@ -1545,6 +1554,7 @@ TEST_CASE("implicit_explicit_detach", "[end_to_end]")
     // exits checks if all the objects in EC have been deleted.
     hook.detach_and_close_link(&link);
 }
+#endif
 
 TEST_CASE("create_map", "[end_to_end]")
 {
@@ -1701,6 +1711,7 @@ _xdp_encap_reflect_packet_test(ebpf_execution_type_t execution_type, ADDRESS_FAM
     }
 }
 
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("printk", "[end_to_end]")
 {
     _test_helper_end_to_end test_helper;
@@ -1752,13 +1763,21 @@ TEST_CASE("printk", "[end_to_end]")
     // so subtract 6 from the length to get the expected return value.
     REQUIRE(hook_result == output.length() - 6);
 }
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("xdp-reflect-v4-jit", "[xdp_tests]") { _xdp_reflect_packet_test(EBPF_EXECUTION_JIT, AF_INET); }
 TEST_CASE("xdp-reflect-v6-jit", "[xdp_tests]") { _xdp_reflect_packet_test(EBPF_EXECUTION_JIT, AF_INET6); }
+#endif
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("xdp-reflect-v4-interpret", "[xdp_tests]") { _xdp_reflect_packet_test(EBPF_EXECUTION_INTERPRET, AF_INET); }
 TEST_CASE("xdp-reflect-v6-interpret", "[xdp_tests]") { _xdp_reflect_packet_test(EBPF_EXECUTION_INTERPRET, AF_INET6); }
+#endif
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("xdp-encap-reflect-v4-jit", "[xdp_tests]") { _xdp_encap_reflect_packet_test(EBPF_EXECUTION_JIT, AF_INET); }
 TEST_CASE("xdp-encap-reflect-v6-jit", "[xdp_tests]") { _xdp_encap_reflect_packet_test(EBPF_EXECUTION_JIT, AF_INET6); }
+#endif
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("xdp-encap-reflect-v4-interpret", "[xdp_tests]")
 {
     _xdp_encap_reflect_packet_test(EBPF_EXECUTION_INTERPRET, AF_INET);
@@ -1767,6 +1786,7 @@ TEST_CASE("xdp-encap-reflect-v6-interpret", "[xdp_tests]")
 {
     _xdp_encap_reflect_packet_test(EBPF_EXECUTION_INTERPRET, AF_INET6);
 }
+#endif
 
 static void
 _xdp_decapsulate_permit_packet_test(ebpf_execution_type_t execution_type, ADDRESS_FAMILY address_family)
@@ -1808,6 +1828,7 @@ _xdp_decapsulate_permit_packet_test(ebpf_execution_type_t execution_type, ADDRES
     }
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("xdp-decapsulate-permit-v4-jit", "[xdp_tests]")
 {
     _xdp_decapsulate_permit_packet_test(EBPF_EXECUTION_JIT, AF_INET);
@@ -1816,6 +1837,9 @@ TEST_CASE("xdp-decapsulate-permit-v6-jit", "[xdp_tests]")
 {
     _xdp_decapsulate_permit_packet_test(EBPF_EXECUTION_JIT, AF_INET6);
 }
+#endif
+
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("xdp-decapsulate-permit-v4-interpret", "[xdp_tests]")
 {
     _xdp_decapsulate_permit_packet_test(EBPF_EXECUTION_INTERPRET, AF_INET);
@@ -1824,7 +1848,9 @@ TEST_CASE("xdp-decapsulate-permit-v6-interpret", "[xdp_tests]")
 {
     _xdp_decapsulate_permit_packet_test(EBPF_EXECUTION_INTERPRET, AF_INET6);
 }
+#endif
 
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 TEST_CASE("link_tests", "[end_to_end]")
 {
     _test_helper_end_to_end test_helper;
@@ -1851,6 +1877,7 @@ TEST_CASE("link_tests", "[end_to_end]")
 
     hook.detach();
 }
+#endif
 
 static void
 _map_reuse_test(ebpf_execution_type_t execution_type)

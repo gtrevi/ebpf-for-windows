@@ -1145,7 +1145,7 @@ ebpf_program_invoke(
             *result = (function_pointer)(context);
             break;
 
-        case EBPF_CODE_EBPF:
+        default:
 #if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
             uint64_t out_value;
             int ret = (uint32_t)(ubpf_exec(current_program->code_or_vm.vm, context, 1024, &out_value));

@@ -222,6 +222,7 @@ run_bpf_code_generator_test(const std::string& data_file)
     REQUIRE(system(test_command.c_str()) == 0);
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) && !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 #define DECLARE_TEST(FILE)                                                                                            \
     TEST_CASE(FILE "_native", "[bpf_code_generator]")                                                                 \
     {                                                                                                                 \
@@ -238,6 +239,43 @@ run_bpf_code_generator_test(const std::string& data_file)
         run_ubpf_interpret_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR "tests" SEPARATOR \
                                 "" FILE ".data");                                                                     \
     }
+
+#endif
+#if !defined(CONFIG_BPF_JIT_DISABLED) && defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_TEST(FILE)                                                                                      \
+    TEST_CASE(FILE "_native", "[bpf_code_generator]")                                                           \
+    {                                                                                                           \
+        run_bpf_code_generator_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR         \
+                                    "tests" SEPARATOR "" FILE ".data");                                         \
+    }                                                                                                           \
+    TEST_CASE(FILE "_jit", "[ubpf_jit]")                                                                        \
+    {                                                                                                           \
+        run_ubpf_jit_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR "tests" SEPARATOR \
+                          "" FILE ".data");                                                                     \
+    }
+#endif
+#if defined(CONFIG_BPF_JIT_DISABLED) && !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_TEST(FILE)                                                                                            \
+    TEST_CASE(FILE "_native", "[bpf_code_generator]")                                                                 \
+    {                                                                                                                 \
+        run_bpf_code_generator_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR               \
+                                    "tests" SEPARATOR "" FILE ".data");                                               \
+    }                                                                                                                 \
+    TEST_CASE(FILE "_interpret", "[ubpf_interpret]")                                                                  \
+    {                                                                                                                 \
+        run_ubpf_interpret_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR "tests" SEPARATOR \
+                                "" FILE ".data");                                                                     \
+    }
+
+#endif
+#if defined(CONFIG_BPF_JIT_DISABLED) && defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_TEST(FILE)                                                                              \
+    TEST_CASE(FILE "_native", "[bpf_code_generator]")                                                   \
+    {                                                                                                   \
+        run_bpf_code_generator_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR \
+                                    "tests" SEPARATOR "" FILE ".data");                                 \
+    }
+#endif
 
 // Tests are dependent on the collateral from the https://github.com/iovisor/ubpf project.
 // Most uBPF tests are declared as a block of assembly, an expected result and a block of memory

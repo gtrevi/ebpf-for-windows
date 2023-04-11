@@ -24,16 +24,16 @@
 #pragma warning(disable : 26812)
 
 #define CONCAT(s1, s2) s1 s2
-#define DECLARE_ALL_TEST_CASES(_name, _group, _function)                              \
-                                                                                      \
-    TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }       \
-    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); } \
-    TEST_CASE(CONCAT(_name, "-interpret"), _group) { _function(EBPF_EXECUTION_INTERPRET); }
+#define DECLARE_ALL_TEST_CASES(_name, _group, _function) #if !defined(CONFIG_BPF_JIT_DISABLED)
+TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }
+#endif
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+TEST_CASE(CONCAT(_name, "-interpret"), _group) { _function(EBPF_EXECUTION_INTERPRET); }
+#endif TEST_CASE(CONCAT(_name, "-native"), _group){_function(EBPF_EXECUTION_NATIVE); }
 
-#define DECLARE_JIT_TEST_CASES(_name, _group, _function)                        \
-                                                                                \
-    TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); } \
-    TEST_CASE(CONCAT(_name, "-native"), _group) { _function(EBPF_EXECUTION_NATIVE); }
+#define DECLARE_JIT_TEST_CASES(_name, _group, _function) #if !defined(CONFIG_BPF_JIT_DISABLED)
+TEST_CASE(CONCAT(_name, "-jit"), _group) { _function(EBPF_EXECUTION_JIT); }
+#endif TEST_CASE(CONCAT(_name, "-native"), _group){_function(EBPF_EXECUTION_NATIVE); }
 
 const int nonexistent_fd = 12345678;
 
@@ -1815,6 +1815,7 @@ TEST_CASE("enumerate map IDs", "[libbpf]")
     Platform::_close(fd2);
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("enumerate link IDs", "[libbpf]")
 {
     _test_helper_end_to_end test_helper;
@@ -1854,7 +1855,9 @@ TEST_CASE("enumerate link IDs", "[libbpf]")
     REQUIRE(bpf_link_get_next_id(id2, &id3) < 0);
     REQUIRE(errno == ENOENT);
 }
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("enumerate link IDs with bpf", "[libbpf]")
 {
     _test_helper_end_to_end test_helper;
@@ -1961,6 +1964,7 @@ TEST_CASE("enumerate link IDs with bpf", "[libbpf]")
     Platform::_close(fd2);
     Platform::_close(fd3);
 }
+#endif
 
 TEST_CASE("bpf_prog_attach", "[libbpf]")
 {
@@ -2043,6 +2047,7 @@ TEST_CASE("bpf_link__pin", "[libbpf]")
     bpf_object__close(object);
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("bpf_obj_get_info_by_fd", "[libbpf]")
 {
     _test_helper_end_to_end test_helper;
@@ -2147,7 +2152,9 @@ TEST_CASE("bpf_obj_get_info_by_fd", "[libbpf]")
 
     Platform::_close(link_fd);
 }
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("bpf_obj_get_info_by_fd_2", "[libbpf]")
 {
     _test_helper_end_to_end test_helper;
@@ -2202,6 +2209,7 @@ TEST_CASE("bpf_obj_get_info_by_fd_2", "[libbpf]")
 
     Platform::_close(link_fd);
 }
+#endif
 
 TEST_CASE("libbpf_prog_type_by_name_test", "[libbpf]")
 {
