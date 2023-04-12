@@ -281,9 +281,9 @@ GlueCancelIoEx(_In_ HANDLE file_handle, _In_opt_ OVERLAPPED* overlapped)
 
 #pragma warning(push)
 #pragma warning(disable : 6001) // Using uninitialized memory 'context'
-static void
-_unload_all_native_modules()
+_Requires_lock_not_held_(_service_path_to_context_mutex) static void _unload_all_native_modules()
 {
+    std::unique_lock lock(_service_path_to_context_mutex);
     for (auto& [path, context] : _service_path_to_context_map) {
         if (context->loaded) {
             // Deregister client.
@@ -350,8 +350,8 @@ _preprocess_load_native_module(_Inout_ service_context_t* context)
     context->loaded = true;
 }
 
-static void
-_preprocess_ioctl(_In_ const ebpf_operation_header_t* user_request)
+_Requires_lock_not_held_(_service_path_to_context_mutex) static void _preprocess_ioctl(
+    _In_ const ebpf_operation_header_t* user_request)
 {
     switch (user_request->id) {
     case EBPF_OPERATION_LOAD_NATIVE_MODULE: {
@@ -363,6 +363,8 @@ _preprocess_ioctl(_In_ const ebpf_operation_header_t* user_request)
 
             std::wstring service_path;
             service_path.assign((wchar_t*)request->data, service_name_length / 2);
+
+            std::unique_lock lock(_service_path_to_context_mutex);
             auto context = _service_path_to_context_map.find(service_path);
             if (context != _service_path_to_context_map.end()) {
                 context->second->module_id = request->module_id;
@@ -491,14 +493,14 @@ _Requires_lock_not_held_(_fd_to_handle_mutex) int Glue_open_osfhandle(intptr_t o
     }
 }
 
-intptr_t
-Glue_get_osfhandle(int file_descriptor)
+_Requires_lock_not_held_(_fd_to_handle_mutex) intptr_t Glue_get_osfhandle(int file_descriptor)
 {
     if (file_descriptor == ebpf_fd_invalid) {
         errno = EINVAL;
         return ebpf_handle_invalid;
     }
 
+    std::unique_lock lock(_fd_to_handle_mutex);
     std::map<fd_t, ebpf_handle_t>::iterator it = _fd_to_handle_map.find(file_descriptor);
     if (it != _fd_to_handle_map.end()) {
         return it->second;
@@ -648,10 +650,11 @@ _test_handle_helper::~_test_handle_helper()
     }
 }
 
-static void
-_rundown_osfhandles()
+_Requires_lock_not_held_(_fd_to_handle_mutex) static void _rundown_osfhandles()
 {
     std::vector<int> fds_to_close;
+
+    std::unique_lock lock(_fd_to_handle_mutex);
     for (auto [fd, handle] : _fd_to_handle_map) {
         fds_to_close.push_back(fd);
     }
@@ -758,10 +761,11 @@ get_native_module_failures()
     return _expect_native_module_load_failures || ebpf_fault_injection_is_enabled();
 }
 
-_Must_inspect_result_ ebpf_result_t
-get_service_details_for_file(
-    _In_ const std::wstring& file_path, _Out_ const wchar_t** service_name, _Out_ GUID* provider_guid)
+_Requires_lock_not_held_(_service_path_to_context_mutex) _Must_inspect_result_ ebpf_result_t
+    get_service_details_for_file(
+        _In_ const std::wstring& file_path, _Out_ const wchar_t** service_name, _Out_ GUID* provider_guid)
 {
+    std::unique_lock lock(_service_path_to_context_mutex);
     for (auto& [path, context] : _service_path_to_context_map) {
         if (context->file_path == file_path) {
             *service_name = context->name.c_str();
