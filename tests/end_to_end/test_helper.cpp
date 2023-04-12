@@ -657,7 +657,7 @@ _Requires_lock_not_held_(_fd_to_handle_mutex) static void _rundown_osfhandles()
     for (auto [fd, handle] : _fd_to_handle_map) {
         fds_to_close.push_back(fd);
     }
-    lock.release();
+    lock.unlock();
 
     for (auto fd : fds_to_close) {
         Glue_close(fd);
