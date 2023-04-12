@@ -652,12 +652,12 @@ _test_handle_helper::~_test_handle_helper()
 
 _Requires_lock_not_held_(_fd_to_handle_mutex) static void _rundown_osfhandles()
 {
-    std::vector<int> fds_to_close;
-
     std::unique_lock lock(_fd_to_handle_mutex);
+    std::vector<int> fds_to_close;
     for (auto [fd, handle] : _fd_to_handle_map) {
         fds_to_close.push_back(fd);
     }
+    lock.release();
 
     for (auto fd : fds_to_close) {
         Glue_close(fd);
