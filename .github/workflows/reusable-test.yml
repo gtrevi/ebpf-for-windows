@@ -80,7 +80,6 @@ jobs:
       PRE_COMMAND: ${{inputs.pre_test}}
       POST_COMMAND: ${{inputs.post_test}}
       CXPLAT_MEMORY_LEAK_DETECTION: ${{inputs.leak_detection}}
-      VS_DEVENV_CMD: "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\Common7\\Tools\\VsDevCmd.bat"
       DUMP_PATH: c:/dumps/x64/${{matrix.configurations}}
       TEST_TIMEOUT: 3600 # 1 hour timeout for tests.
 
@@ -164,12 +163,17 @@ jobs:
         wpr.exe -start ${{github.workspace}}\${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\ebpfforwindows.wprp -filemode
 
     # Check binary dependencies for eBPF user-mode redistributables
+    - name: Set MSVC Environment Variables
+      shell: cmd
+      run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        powershell.exe "echo 'msvc_tools_path=%VCToolsInstallDir%' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append"
+        powershell.exe "echo 'msvc_tools_version=%VCToolsVersion%' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append"
     - name: Check binary dependencies for eBPF user-mode redistributables
       if: ${{env.BUILD_CONFIGURATION}} == 'Release'
       id: check_binary_dependencies
       working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
       run: |
-        powershell.exe -NoExit -Command "&{Import-Module """C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"""; Enter-VsDevShell 3397eed9 -SkipAutomaticLocation -DevCmdArguments """-arch=x64 -host_arch=x64"""}"
         ..\..\scripts\check_binary_dependencies.ps1 -BuildArtifact ${{inputs.build_artifact}}
 
     - name: Configure eBPF store
@@ -200,7 +204,7 @@ jobs:
       id: run_test_with_code_coverage_in_vs_dev
       shell: cmd
       run: |
-          call "${{env.VS_DEVENV_CMD}}"
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
           set EBPF_ENABLE_WER_REPORT=yes
           OpenCppCoverage.exe -q --cover_children --sources %CD% --excluded_sources %CD%\external\Catch2 --export_type cobertura:ebpf_for_windows.xml --working_dir ${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}} -- ${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\${{env.TEST_COMMAND}}
 
