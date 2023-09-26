@@ -162,13 +162,15 @@ jobs:
         mkdir ${{github.workspace}}\${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\TestLogs
         wpr.exe -start ${{github.workspace}}\${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\ebpfforwindows.wprp -filemode
 
+    # Check binary dependencies for eBPF user-mode redistributables
     - name: Check binary dependencies for eBPF user-mode redistributables
-      if: steps.skip_check.outputs.should_skip != 'true'
+      if: steps.skip_check.outputs.should_skip != 'true' && ${{env.BUILD_CONFIGURATION}} == 'Release'
       id: check_binary_dependencies
       working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
       run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
         Write-Host (Get-Location).Path
-        ..\..\scripts\check_binary_dependencies.ps1 -BuildType ${{env.BUILD_PLATFORM}} -BuildConfiguration ${{env.BUILD_CONFIGURATION}} -LogFileName ${{ runner.name }}.log
+        ..\..\scripts\check_binary_dependencies.ps1 -BuildArtifact ${{inputs.build_artifact}} -BuildConfiguration ${{env.BUILD_CONFIGURATION}} -LogFileName ${{runner.name}}.log
 
     - name: Configure eBPF store
       if: steps.skip_check.outputs.should_skip != 'true'
