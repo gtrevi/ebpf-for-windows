@@ -167,7 +167,7 @@ jobs:
       id: check_binary_dependencies
       working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
       run: |
-        ..\scripts\check_binary_dependencies.ps1 -BuildType ${{env.BUILD_PLATFORM}} -BuildConfiguration ${{env.BUILD_CONFIGURATION}} -LogFileName ${{ runner.name }}.log
+        .\check_binary_dependencies.ps1 -BuildType ${{env.BUILD_PLATFORM}} -BuildConfiguration ${{env.BUILD_CONFIGURATION}} -LogFileName ${{ runner.name }}.log
 
     - name: Configure eBPF store
       if: steps.skip_check.outputs.should_skip != 'true'
