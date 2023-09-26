@@ -8,7 +8,7 @@ param ([Parameter(Mandatory=$true)][string]$BuildArtifact,
 Push-Location $WorkingDirectory
 Write-Host "Working directory: $WorkingDirectory"
 Write-Host "Build artifact: $BuildArtifact, Log file: $LogFileName"
-Import-Module $WorkingDirectory\..\..\scripts\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
+Import-Module "$WorkingDirectory\..\..\scripts\common.psm1" -Force -ArgumentList ("$LogFileName") -WarningAction SilentlyContinue
 Write-Host "Imported common.psm1"
 
 function Test-CppBinaryDependencies {
