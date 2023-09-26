@@ -154,6 +154,16 @@ jobs:
       run: |
         mkdir ${{github.workspace}}\${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\Artifacts
 
+    # Check binary dependencies for eBPF user-mode redistributables
+    - name: Check binary dependencies for eBPF user-mode redistributables
+      if: steps.skip_check.outputs.should_skip != 'true' && ${{env.BUILD_CONFIGURATION}} == 'Release'
+      id: check_binary_dependencies
+      working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
+      run: |
+        Write-Host (Get-Location).Path
+        Start-Process -FilePath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -Wait
+        ..\..\scripts\check_binary_dependencies.ps1 -BuildArtifact ${{inputs.build_artifact}} -LogFileName ${{runner.name}}.log
+
     - name: Start ETW tracing
       id: start_etw_tracing
       if: (inputs.capture_etw == true) && (steps.skip_check.outputs.should_skip != 'true')
@@ -161,16 +171,6 @@ jobs:
       run: |
         mkdir ${{github.workspace}}\${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\TestLogs
         wpr.exe -start ${{github.workspace}}\${{env.BUILD_PLATFORM}}\${{env.BUILD_CONFIGURATION}}\ebpfforwindows.wprp -filemode
-
-    # Check binary dependencies for eBPF user-mode redistributables
-    - name: Check binary dependencies for eBPF user-mode redistributables
-      if: steps.skip_check.outputs.should_skip != 'true' && ${{env.BUILD_CONFIGURATION}} == 'Release'
-      id: check_binary_dependencies
-      working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
-      run: |
-        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
-        Write-Host (Get-Location).Path
-        ..\..\scripts\check_binary_dependencies.ps1 -BuildArtifact ${{inputs.build_artifact}} -BuildConfiguration ${{env.BUILD_CONFIGURATION}} -LogFileName ${{runner.name}}.log
 
     - name: Configure eBPF store
       if: steps.skip_check.outputs.should_skip != 'true'
