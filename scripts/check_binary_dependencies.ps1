@@ -8,6 +8,7 @@ param ([parameter(Mandatory=$false)][string] $BuildType = "regular",
 
 Push-Location $WorkingDirectory
 Import-Module .\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
+Write-Host (Get-Location).Path
 
 function Test-CppBinaryDependencies {
     param (
