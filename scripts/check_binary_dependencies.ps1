@@ -1,14 +1,15 @@
 # Copyright (c) Microsoft Corporation
 # SPDX-License-Identifier: MIT
 
-param ([Parameter(Mandatory=$true)][string] $BuildArtifact,
-       [Parameter(Mandatory=$true)] [string] $LogFileName)
+param ([Parameter(Mandatory=$true)][string]$BuildArtifact,
+       [Parameter(Mandatory=$true)][string]$LogFileName)
 
 
 Push-Location $WorkingDirectory
 Write-Host "Working directory: $WorkingDirectory"
+Write-Host "Build artifact: $BuildArtifact, Log file: $LogFileName"
 Import-Module $WorkingDirectory\..\..\scripts\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
-Write-Host "imported common.psm1"
+Write-Host "Imported common.psm1"
 
 function Test-CppBinaryDependencies {
     param (
