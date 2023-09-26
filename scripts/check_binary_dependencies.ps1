@@ -1,8 +1,8 @@
 # Copyright (c) Microsoft Corporation
 # SPDX-License-Identifier: MIT
 
-param ([parameter(Mandatory=$false)][string] $BuildArtifact,
-       [Parameter(Mandatory=$True)] [string] $LogFileName)
+param ([Parameter(Mandatory=$true)][string] $BuildArtifact,
+       [Parameter(Mandatory=$true)] [string] $LogFileName)
 
 
 Push-Location $WorkingDirectory
@@ -12,11 +12,8 @@ Write-Host "imported common.psm1"
 
 function Test-CppBinaryDependencies {
     param (
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
-
-        [Parameter(Mandatory = $true)]
-        [string]$TextFilePath
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string]$TextFilePath
     )
 
     Write-Log "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
