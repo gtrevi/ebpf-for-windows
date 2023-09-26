@@ -4,12 +4,8 @@
 param ([Parameter(Mandatory=$true)][string]$BuildArtifact,
        [Parameter(Mandatory=$true)][string]$LogFileName)
 
-
 Push-Location $WorkingDirectory
 Write-Host "Working directory: $WorkingDirectory"
-Write-Host "Build artifact: $BuildArtifact, Log file: $LogFileName"
-Import-Module "$WorkingDirectory\..\..\scripts\common.psm1" -Force -ArgumentList ("$LogFileName") -WarningAction SilentlyContinue
-Write-Host "Imported common.psm1"
 
 function Test-CppBinaryDependencies {
     param (
@@ -17,7 +13,7 @@ function Test-CppBinaryDependencies {
         [Parameter(Mandatory = $true)][string]$TextFilePath
     )
 
-    Write-Log "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
+    Write-Host "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
 
     # Run link.exe to extract dependencies
     $Output = & "dumpbin.exe" /dependents $FilePath | Out-String
@@ -33,14 +29,14 @@ function Test-CppBinaryDependencies {
     $MissingBinaries = Compare-Object -ReferenceObject $Dependencies -DifferenceObject $ExpectedBinaries -PassThru
     $ExtraBinaries = Compare-Object -ReferenceObject $ExpectedBinaries -DifferenceObject $Dependencies -PassThru
     if ($MissingBinaries -or $ExtraBinaries) {
-        Write-Log "Mismatch found between dependencies in the file and the list:" -ForegroundColor Red
-        Write-Log "Missing Dependencies:" -ForegroundColor Red
-        Write-Log $MissingBinaries
-        Write-Log "Extra Dependencies:" -ForegroundColor Red
-        Write-Log $ExtraBinaries
+        Write-Host "Mismatch found between dependencies in the file and the list:" -ForegroundColor Red
+        Write-Host "Missing Dependencies:" -ForegroundColor Red
+        Write-Host $MissingBinaries
+        Write-Host "Extra Dependencies:" -ForegroundColor Red
+        Write-Host $ExtraBinaries
         throw "Dependency checks failed."
     } else {
-        Write-Log "All dependencies match the expected list." -ForegroundColor Green
+        Write-Host "All dependencies match the expected list." -ForegroundColor Green
     }
 }
 
