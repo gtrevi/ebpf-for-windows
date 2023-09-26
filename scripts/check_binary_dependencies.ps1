@@ -1,8 +1,7 @@
 # Copyright (c) Microsoft Corporation
 # SPDX-License-Identifier: MIT
 
-param ([Parameter(Mandatory=$true)][string]$BuildArtifact,
-       [Parameter(Mandatory=$true)][string]$LogFileName)
+param ([Parameter(Mandatory=$true)][string]$BuildArtifact)
 
 Push-Location $WorkingDirectory
 Write-Host "Working directory: $WorkingDirectory"
