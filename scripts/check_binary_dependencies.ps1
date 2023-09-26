@@ -5,7 +5,9 @@ param ([parameter(Mandatory=$false)][string] $BuildType = "regular",
        [parameter(Mandatory=$false)][string] $BuildConfiguration = "Debug",
        [Parameter(Mandatory=$True)] [string] $LogFileName)
 
+
 Push-Location $WorkingDirectory
+Import-Module .\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
 
 function Test-CppBinaryDependencies {
     param (
@@ -42,19 +44,17 @@ function Test-CppBinaryDependencies {
     }
 }
 
-Import-Module .\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
-
-if ($BuildType -eq "regular" && $BuildConfiguration -eq "Debug") {
-    Test-CppBinaryDependencies -FilePath "bpftool.exe" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_bpftool_exe_regular.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfsvc.exe" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfsvc_exe_regular.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfapi_dll_regular.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfnetsh.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfnetsh_dll_regular.txt" | Out-Null
+if ($BuildType -eq "regular") {
+    Test-CppBinaryDependencies -FilePath ".\Release\bpftool.exe" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_bpftool_exe_regular.txt" | Out-Null
+    Test-CppBinaryDependencies -FilePath ".\Release\ebpfsvc.exe" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfsvc_exe_regular.txt" | Out-Null
+    Test-CppBinaryDependencies -FilePath ".\Release\ebpfapi.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfapi_dll_regular.txt" | Out-Null
+    Test-CppBinaryDependencies -FilePath ".\Release\ebpfnetsh.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfnetsh_dll_regular.txt" | Out-Null
 }
 
-if ($BuildType -eq "regular_native-only" && $BuildConfiguration -eq "Release") {
-    Test-CppBinaryDependencies -FilePath "bpftool.exe" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_bpftool_exe_nativeonly.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfapi_dll_nativeonly.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfnetsh.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfnetsh_dll_nativeonly.txt" | Out-Null
+if ($BuildType -eq "regular_native-only") {
+    Test-CppBinaryDependencies -FilePath ".\Release\bpftool.exe" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_bpftool_exe_nativeonly.txt" | Out-Null
+    Test-CppBinaryDependencies -FilePath ".\Release\ebpfapi.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfapi_dll_nativeonly.txt" | Out-Null
+    Test-CppBinaryDependencies -FilePath ".\Release\ebpfnetsh.dll" -TextFilePath "%SOURCE_ROOT%\scripts\check_binary_dependencies_ebpfnetsh_dll_nativeonly.txt" | Out-Null
 }
 
 Pop-Location
