@@ -15,8 +15,8 @@ function Test-CppBinaryDependencies {
     Write-Host "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
 
     # Run link.exe to extract dependencies
-    cmd /c "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" | Out-Null
-    cmd /c "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" | Out-Null
+    & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
+    & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
     $Output = & "dumpbin.exe" /dependents $FilePath | Out-String
 
     # Read the list of expected binaries from the text file
