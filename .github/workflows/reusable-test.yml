@@ -170,8 +170,8 @@ jobs:
       run: |
         cmd /c "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
         cmd /c "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        Write-Host 'msvc_tools_path = $env:VCToolsInstallDir'
-        Write-Host 'msvc_tools_path = $env:VCToolsVersion'
+        Write-Host "msvc_tools_path = $env:VCToolsInstallDir"
+        Write-Host "msvc_tools_path = $env:VCToolsVersion"
         ..\..\scripts\check_binary_dependencies.ps1 -BuildArtifact ${{inputs.build_artifact}}
 
     - name: Configure eBPF store
