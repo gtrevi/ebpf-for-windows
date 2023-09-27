@@ -164,7 +164,7 @@ jobs:
 
     # Check binary dependencies for eBPF user-mode redistributables
     - name: Check binary dependencies for eBPF user-mode redistributables
-      if: ${{env.BUILD_CONFIGURATION}} == 'Release'
+      if: (${{inputs.build_artifact}} == 'Build-x64' || ${{inputs.build_artifact}} == 'Build-x64-native-only') && ${{env.BUILD_CONFIGURATION}} == 'Release'
       id: check_binary_dependencies
       working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
       run: |

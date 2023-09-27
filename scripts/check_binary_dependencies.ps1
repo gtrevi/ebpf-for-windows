@@ -36,23 +36,30 @@ function Test-CppBinaryDependencies {
         Write-Host $MissingBinaries
         Write-Host "Extra Dependencies:" -ForegroundColor Red
         Write-Host $ExtraBinaries
-        throw "Dependency checks failed."
+        return $false
     } else {
         Write-Host "All dependencies match the expected list." -ForegroundColor Green
+        return $true
     }
 }
 
+$allTestsPassed = $true
 if ($BuildArtifact -eq "Build-x64") {
-    Test-CppBinaryDependencies -FilePath "bpftool.exe" -TextFilePath "$WorkingDirectory\..\..\scripts\check_binary_dependencies_bpftool_exe_regular.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "$WorkingDirectory\..\..\scripts\check_binary_dependencies_ebpfapi_dll_regular.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfnetsh.dll" -TextFilePath "$WorkingDirectory\..\..\scripts\check_binary_dependencies_ebpfnetsh_dll_regular.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfsvc.exe" -TextFilePath "$WorkingDirectory\..\..\scripts\check_binary_dependencies_ebpfsvc_exe_regular.txt" | Out-Null
+    $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "bpftool.exe" -TextFilePath "..\..\scripts\check_binary_dependencies_bpftool_exe_regular.txt")
+    $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "..\..\scripts\check_binary_dependencies_ebpfapi_dll_regular.txt")
+    $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "ebpfnetsh.dll" -TextFilePath "..\..\scripts\check_binary_dependencies_ebpfnetsh_dll_regular.txt")
+    $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "ebpfsvc.exe" -TextFilePath "..\..\scripts\check_binary_dependencies_ebpfsvc_exe_regular.txt")
 }
-
 if ($BuildArtifact -eq "Build-x64-native-only") {
-    Test-CppBinaryDependencies -FilePath "bpftool.exe" -TextFilePath "$WorkingDirectory\..\..\scripts\check_binary_dependencies_bpftool_exe_nativeonly.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "$WorkingDirectory\..\..\scripts\check_binary_dependencies_ebpfapi_dll_nativeonly.txt" | Out-Null
-    Test-CppBinaryDependencies -FilePath "ebpfnetsh.dll" -TextFilePath "$WorkingDirectory\..\..\scripts\check_binary_dependencies_ebpfnetsh_dll_nativeonly.txt" | Out-Null
+    $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "bpftool.exe" -TextFilePath "..\..\scripts\check_binary_dependencies_bpftool_exe_nativeonly.txt")
+    $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "..\..\scripts\check_binary_dependencies_ebpfapi_dll_nativeonly.txt")
+    $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "ebpfnetsh.dll" -TextFilePath "..\..\scripts\check_binary_dependencies_ebpfnetsh_dll_nativeonly.txt")
 }
 
 Pop-Location
+
+if (-not $allTestsPassed) {
+    Write-Host "One or more tests failed. Exiting script." -ForegroundColor Red
+    exit 1
+}
+exit 0
