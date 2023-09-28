@@ -15,13 +15,16 @@ function Test-CppBinaryDependencies {
     Write-Host "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
 
     # Run and parse the dumpbin.exe output to extract dependencies
-    # & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
-    # & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-    # $Output = & "dumpbin.exe" /dependents $FilePath | Out-String
+    #& "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
+    #& "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+    #$Output = & "dumpbin.exe" /dependents $FilePath | Out-String
     $Output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.35.32215\bin\Hostx64\x64\dumpbin.exe" /dependents $FilePath | Out-String
+    #$Output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.37.32822\bin\Hostx64\x64\dumpbin.exe" /dependents $FilePath | Out-String
     # Parse dumpbin.exe output to get the list of dependencies
-    $Dependencies = $Output -split "`n" | Where-Object { $_.Trim().EndsWith(".dll") } | ForEach-Object { $_.Trim() }
-    $Dependencies = $Dependencies[1..$Dependencies.Length] # Discard the first line, which always contains the dumped file itself.
+    $Dependencies = $Output -split "`n" | Where-Object { $_.Trim() -ilike ("*.dll") } | ForEach-Object { $_.Trim() }
+    if (-not ($FilePath -match '\.exe$' -or $FilePath -match '\.EXE$')) {
+        $Dependencies = $Dependencies[1..$Dependencies.Length] # Discard the first line, which always contains the dumped file itself.
+    }
     Write-Host "Dependency list for '$FilePath':" -ForegroundColor Red
     Write-Host $Dependencies
 
@@ -31,8 +34,8 @@ function Test-CppBinaryDependencies {
     Write-Host $ExpectedBinaries
 
     # Compare dependencies with the expected binaries
-    $MissingBinaries = Compare-Object -ReferenceObject $Dependencies -DifferenceObject $ExpectedBinaries -PassThru
-    $ExtraBinaries = Compare-Object -ReferenceObject $Dependencies -DifferenceObject $ExpectedBinaries | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
+    $MissingBinaries = Compare-Object -ReferenceObject $ExpectedBinaries -DifferenceObject $Dependencies -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
+    $ExtraBinaries = Compare-Object -ReferenceObject $ExpectedBinaries -DifferenceObject $Dependencies | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
     if ($MissingBinaries -or $ExtraBinaries) {
         Write-Host "Mismatch found between dependencies in the file and the list:" -ForegroundColor Red
         Write-Host "Missing Dependencies:" -ForegroundColor Red
@@ -45,6 +48,8 @@ function Test-CppBinaryDependencies {
         return $true
     }
 }
+
+Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "..\..\scripts\check_binary_dependencies_ebpfapi_dll_regular.txt"
 
 $allTestsPassed = $true
 if ($BuildArtifact -eq "Build-x64") {
