@@ -49,8 +49,6 @@ function Test-CppBinaryDependencies {
     }
 }
 
-Test-CppBinaryDependencies -FilePath "ebpfapi.dll" -TextFilePath "..\..\scripts\check_binary_dependencies_ebpfapi_dll_regular.txt"
-
 $allTestsPassed = $true
 if ($BuildArtifact -eq "Build-x64") {
     $allTestsPassed = $allTestsPassed -and (Test-CppBinaryDependencies -FilePath "bpftool.exe" -TextFilePath "..\..\scripts\check_binary_dependencies_bpftool_exe_regular.txt")
