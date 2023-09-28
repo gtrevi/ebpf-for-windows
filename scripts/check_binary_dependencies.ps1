@@ -22,7 +22,7 @@ function Test-CppBinaryDependencies {
 
     # Read the list of expected binaries from the text file
     $ExpectedBinaries = Get-Content $TextFilePath
-    Write-Host "Expected binaries list:" -ForegroundColor Red
+    Write-Host "Expected dependency list:" -ForegroundColor Red
     Write-Host $ExpectedBinaries
 
     # Parse dumpbin.exe output to get the list of dependencies
