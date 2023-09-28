@@ -32,7 +32,7 @@ function Test-CppBinaryDependencies {
 
     # Compare dependencies with the expected binaries
     $MissingBinaries = Compare-Object -ReferenceObject $Dependencies -DifferenceObject $ExpectedBinaries -PassThru
-    $ExtraBinaries = Compare-Object -ReferenceObject $ExpectedBinaries -DifferenceObject $Dependencies -PassThru
+    $ExtraBinaries = Compare-Object -ReferenceObject $Dependencies -DifferenceObject $ExpectedBinaries | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
     if ($MissingBinaries -or $ExtraBinaries) {
         Write-Host "Mismatch found between dependencies in the file and the list:" -ForegroundColor Red
         Write-Host "Missing Dependencies:" -ForegroundColor Red
