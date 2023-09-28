@@ -210,31 +210,27 @@ jobs:
       configurations: '["NativeOnlyDebug", "NativeOnlyRelease"]'
 
   check_dependency_native_only_ws2019:
-    # Always run this job.
-    # Only run this on repos that have self-host runners.
     needs: regular_native-only
-    if: github.repository == 'microsoft/ebpf-for-windows' && (github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group')
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     uses: ./.github/workflows/reusable-test.yml
     with:
       test_command: .\check_binary_dependencies.ps1 -BuildArtifact "Build-x64-native-only"
       name: check_dependency_native_only_ws2019
       build_artifact: Build-x64-native-only
-      environment: ebpf_cicd_tests_ws2019
+      environment: windows-2019
       gather_dumps: false
       code_coverage: false
       configurations: '["NativeOnlyRelease"]'
 
   check_dependency_native_only_ws2022:
-      # Always run this job.
-      # Only run this on repos that have self-host runners.
       needs: regular_native-only
-      if: github.repository == 'microsoft/ebpf-for-windows' && (github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group')
+      if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
       uses: ./.github/workflows/reusable-test.yml
       with:
         test_command: .\check_binary_dependencies.ps1 -BuildArtifact "Build-x64-native-only"
         name: check_dependency_native_only_ws2022
         build_artifact: Build-x64-native-only
-        environment: ebpf_cicd_tests_ws2022
+        environment: windows-2022
         gather_dumps: false
         code_coverage: false
         configurations: '["NativeOnlyRelease"]'
