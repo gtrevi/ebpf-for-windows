@@ -22,7 +22,7 @@ function Test-CppBinaryDependencies {
     # Parse dumpbin.exe output to get the list of dependencies
     $Dependencies = $Output -split "`n" | Where-Object { $_.Trim().EndsWith(".dll") } | ForEach-Object { $_.Trim() }
     $Dependencies = $Dependencies[1..$Dependencies.Length] # Discard the first line, which always contains the dumped file itself.
-    Write-Host "Dependencies list:" -ForegroundColor Red
+    Write-Host "Dependency list:" -ForegroundColor Red
     Write-Host $Dependencies
 
     # Read the list of expected binaries from the text file
