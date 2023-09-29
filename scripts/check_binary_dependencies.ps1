@@ -5,7 +5,6 @@ param ([Parameter(Mandatory=$true)][string] $BuildArtifact,
        [Parameter(Mandatory=$false)][string] $VsToolsPath)
 
 Push-Location $WorkingDirectory
-Write-Host "Working directory: $WorkingDirectory"
 
 function Test-CppBinaryDependencies {
     param (
@@ -15,14 +14,15 @@ function Test-CppBinaryDependencies {
 
     Write-Host "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
 
-    # Run and parse the dumpbin.exe output to extract dependencies
+    # Run and parse the dumpbin.exe output to extract the DLL dependencies
     $DumpbinExe = Join-Path -Path $VsToolsPath -ChildPath "bin\Hostx64\x64\dumpbin.exe"
     $Output = & "$DumpbinExe" /dependents $FilePath | Out-String
 
-    # Parse dumpbin.exe output to get the list of dependencies
+    # Parse dumpbin.exe output to get the list of DLL dependencies
     $Dependencies = $Output -split "`n" | Where-Object { $_.Trim() -ilike ("*.dll") } | ForEach-Object { $_.Trim() }
     if (-not ($FilePath -match '\.exe$' -or $FilePath -match '\.EXE$')) {
-        $Dependencies = $Dependencies[1..$Dependencies.Length] # Discard the first line, which always contains the dumped file itself.
+        # For DLLs only, discard the first line, which always contains the dumped file itself.
+        $Dependencies = $Dependencies[1..$Dependencies.Length]
     }
     Write-Host "Dependency list for '$FilePath':" -ForegroundColor Red
     Write-Host $Dependencies
