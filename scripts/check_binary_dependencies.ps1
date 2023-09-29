@@ -1,7 +1,8 @@
 # Copyright (c) Microsoft Corporation
 # SPDX-License-Identifier: MIT
 
-param ([Parameter(Mandatory=$true)][string]$BuildArtifact)
+param ([Parameter(Mandatory=$true)][string] $BuildArtifact,
+       [Parameter(Mandatory=$false)][string] $VsToolsPath)
 
 Push-Location $WorkingDirectory
 Write-Host "Working directory: $WorkingDirectory"
@@ -15,11 +16,8 @@ function Test-CppBinaryDependencies {
     Write-Host "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
 
     # Run and parse the dumpbin.exe output to extract dependencies
-    #& "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
-    #& "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-    #$Output = & "dumpbin.exe" /dependents $FilePath | Out-String
-    $Output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.35.32215\bin\Hostx64\x64\dumpbin.exe" /dependents $FilePath | Out-String
-    #$Output = & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.37.32822\bin\Hostx64\x64\dumpbin.exe" /dependents $FilePath | Out-String
+    $Output = & "$VsToolsPath\dumpbin.exe" /dependents $FilePath | Out-String
+
     # Parse dumpbin.exe output to get the list of dependencies
     $Dependencies = $Output -split "`n" | Where-Object { $_.Trim() -ilike ("*.dll") } | ForEach-Object { $_.Trim() }
     if (-not ($FilePath -match '\.exe$' -or $FilePath -match '\.EXE$')) {

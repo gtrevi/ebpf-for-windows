@@ -209,32 +209,6 @@ jobs:
       code_coverage: false
       configurations: '["NativeOnlyDebug", "NativeOnlyRelease"]'
 
-  check_dependency_native_only_ws2019:
-    needs: regular_native-only
-    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      test_command: ..\..\scripts\check_binary_dependencies.ps1 -BuildArtifact "Build-x64-native-only"
-      name: check_dependency_native_only_ws2019
-      build_artifact: Build-x64-native-only
-      environment: windows-2019
-      gather_dumps: false
-      code_coverage: false
-      configurations: '["NativeOnlyRelease"]'
-
-  check_dependency_native_only_ws2022:
-      needs: regular_native-only
-      if: github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
-      uses: ./.github/workflows/reusable-test.yml
-      with:
-        test_command: ..\..\scripts\check_binary_dependencies.ps1 -BuildArtifact "Build-x64-native-only"
-        name: check_dependency_native_only_ws2022
-        build_artifact: Build-x64-native-only
-        environment: windows-2022
-        gather_dumps: false
-        code_coverage: false
-        configurations: '["NativeOnlyRelease"]'
-
   ossar:
     # Always run this job.
     needs: regular
