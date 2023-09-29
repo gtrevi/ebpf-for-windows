@@ -16,8 +16,8 @@ function Test-CppBinaryDependencies {
     Write-Host "Checking binary dependencies for [$BuildArtifact - $FilePath] against [$TextFilePath]..." -ForegroundColor Green
 
     # Run and parse the dumpbin.exe output to extract dependencies
-    $DumpbinPath = Join-Path -Path $VsToolsPath -ChildPath "bin\Hostx64\x64\dumpbin.exe"
-    $Output = & "$DumpbinPath" /dependents $FilePath | Out-String
+    $DumpbinExe = Join-Path -Path $VsToolsPath -ChildPath "bin\Hostx64\x64\dumpbin.exe"
+    $Output = & "$DumpbinExe" /dependents $FilePath | Out-String
 
     # Parse dumpbin.exe output to get the list of dependencies
     $Dependencies = $Output -split "`n" | Where-Object { $_.Trim() -ilike ("*.dll") } | ForEach-Object { $_.Trim() }
