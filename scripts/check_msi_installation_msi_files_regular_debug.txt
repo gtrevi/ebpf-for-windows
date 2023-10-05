@@ -11,7 +11,6 @@ C:\Program Files\ebpf-for-windows\ebpfnetsh.dll
 C:\Program Files\ebpf-for-windows\ebpfnetsh.pdb
 C:\Program Files\ebpf-for-windows\export_program_info.exe
 C:\Program Files\ebpf-for-windows\export_program_info.pdb
-C:\Program Files\ebpf-for-windows\file_list.txt
 C:\Program Files\ebpf-for-windows\LICENSE.txt
 C:\Program Files\ebpf-for-windows\drivers\eBPFCore.inf
 C:\Program Files\ebpf-for-windows\drivers\eBPFCore.pdb
