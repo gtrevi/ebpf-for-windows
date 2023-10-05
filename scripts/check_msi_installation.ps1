@@ -201,7 +201,7 @@ try {
     # Install the MSI package.
     $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments $buildArtifactParams[$BuildArtifact]["InstallComponents"]
 
-    # Check if the installed files correspont to the expected list.
+    # Check if the installed files corespondent to the expected list.
     $res =  CompareFiles -targetPath "$InstallPath" -listFilePath $buildArtifactParams[$BuildArtifact]["ExpectedFileList"]
     $allTestsPassed = $allTestsPassed -and $res
 
