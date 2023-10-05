@@ -18,5 +18,3 @@ C:\Program Files\ebpf-for-windows\drivers\eBPFCore.sys
 C:\Program Files\ebpf-for-windows\drivers\NetEbpfExt.inf
 C:\Program Files\ebpf-for-windows\drivers\NetEbpfExt.pdb
 C:\Program Files\ebpf-for-windows\drivers\NetEbpfExt.sys
-C:\Program Files\ebpf-for-windows\lib\EbpfApi.lib
-C:\Program Files\ebpf-for-windows\lib\ebpf_store_helper_km.lib
