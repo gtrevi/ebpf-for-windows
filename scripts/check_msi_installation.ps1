@@ -23,37 +23,25 @@ function CompareFilesInDirectory {
     )
 
     # Read the list of files from the file
-    $fileList = Get-Content $listFilePath
+    $ExpectedFiles = Get-Content $listFilePath
 
-    # Get all files and subdirectories in the target directory
-    $items = Get-ChildItem -Path $TargetPath -File -Recurse | Select-Object FullName
+    # Get all files and subdirectories installed in the target directory
+    $InstalledFiles = Get-ChildItem -Path $TargetPath -File -Recurse | Select-Object FullName
 
-    # Initialize a boolean variable to track whether all files were found
-    $allFilesFound = $true
-
-    # Initialize an array to store the found files
-    $foundFiles = @()
-
-    # Recursively iterate through each file in the target path
-    foreach ($item in $items) {
-        # Check if the installed file is in the expected list
-        if ($fileList -contains $item.FullName) {
-            $foundFiles += $item.FullName
-        } else {
-            $allFilesFound = $false
-        }
+    # Compare the installed files with the expected binaries
+    $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
+    $ExtraFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
+    if ($MissingFiles -or $ExtraFiles) {
+        Write-Host "Mismatch found between the installed files and the one in the expected list:" -ForegroundColor Red
+        Write-Host "Missing Files:" -ForegroundColor Red
+        Write-Host $MissingFiles
+        Write-Host "Extra Files:" -ForegroundColor Red
+        Write-Host $ExtraFiles
+        return $false
+    } else {
+        Write-Host "All installed files match the expected list." -ForegroundColor Green
+        return $true
     }
-
-    # Display the found files
-    Write-Host "Found Files:"
-    Write-Host $foundFiles
-
-    # Display the missing files
-    Write-Host "Missing Files:"
-    $missingFiles = Compare-Object $fileList $foundFiles -PassThru
-    Write-Host $missingFiles
-
-    return $allFilesFound
 }
 
 function Install-MsiPackage {
@@ -120,6 +108,7 @@ try {
     $res = Uninstall-MsiPackage -MsiPath $MsiPath
     $allTestsPassed = $allTestsPassed -and $res
 } catch {
+    $allTestsPassed = $false
     Write-Host "Error: $_"
 }
 
