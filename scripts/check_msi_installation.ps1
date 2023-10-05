@@ -32,7 +32,7 @@ $eBpfDrivers =
 $eBpfNetshExtensionName = "ebpfnetsh"
 $eBpfServiceName = "ebpfsvc"
 
-function CompareFilesInDirectory {
+function CompareFiles {
     param(
         [string]$targetPath,
         [string]$listFilePath
@@ -40,13 +40,13 @@ function CompareFilesInDirectory {
 
     Write-Host "Comparing files in '$targetPath' with the expected list in '$listFilePath'..."
 
-    # Get all files installed in the target directory
+    # Get all files installed in the target directory.
     $InstalledFiles = Get-ChildItem -Path $targetPath -File -Recurse | ForEach-Object { $_.FullName }
 
-    # Read the list of files from the file containing the expected file list
+    # Read the list of files from the file containing the expected file list.
     $ExpectedFiles = Get-Content $listFilePath
 
-    # Compare the installed files with the expected binaries
+    # Compare the installed files with the expected binaries.
     $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
     $ExtraFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
     if ($MissingFiles -or $ExtraFiles) {
@@ -70,8 +70,8 @@ function Install-MsiPackage {
     )
 
     $res = $true
-    $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $MsiAdditionalArguments"
 
+    $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $MsiAdditionalArguments"
     Write-Host "Installing MSI package with arguments: '$arguments'..."
     $process = Start-Process -FilePath msiexec.exe -ArgumentList $arguments -Wait -PassThru
 
@@ -125,19 +125,15 @@ function Get-FullDiskPathFromService {
         [string]$serviceName
     )
 
-    Write-Host -level $LogLevelInfo -message "Get-FullDiskPathFromService($serviceName)"
+    Write-Host -level $LogLevelInfo -message "Verifying that the service '$serviceName' is registered correctly..."
 
+    # Query for the service and search for the BINARY_PATH_NAME line using regex.
     $scQueryOutput = & "sc.exe" qc $serviceName
-
-    # Search for the BINARY_PATH_NAME line using regex.
     $binaryPathLine = $scQueryOutput -split "`n" | Where-Object { $_ -match "BINARY_PATH_NAME\s+:\s+(.*)" }
-
     if ($binaryPathLine) {
-
         # Extract the full disk path using regex.
         $binaryPath = $matches[1]
         $fullDiskPath = [regex]::Match($binaryPath, '(?<=\\)\w:.+')
-
         if ($fullDiskPath.Success) {
             return $fullDiskPath.Value
         }
@@ -155,11 +151,18 @@ function Check-eBPF-Installation {
     try {
         $eBpfDrivers.GetEnumerator() | ForEach-Object {
             $driverName = $_.Key
-            $currDriverPath = Get-FullDiskPathFromService -serviceName $driverName
-            if ($currDriverPath) {
-                if ($?) {
-                    Write-Host -level $LogLevelInfo -message "[$driverName] is registered correctly, starting the driver service..."
-                } else {
+            Write-Host -level $LogLevelInfo -message "Verifying that the service '$driverName' is registered correctly..."
+            # Query for the service and search for the BINARY_PATH_NAME line using regex.
+            $scQueryOutput = & "sc.exe" qc $driverName
+            $binaryPathLine = $scQueryOutput -split "`n" | Where-Object { $_ -match "BINARY_PATH_NAME\s+:\s+(.*)" }
+            if ($binaryPathLine) {
+                # Extract the full disk path using regex.
+                $binaryPath = $matches[1]
+                $fullDiskPath = [regex]::Match($binaryPath, '(?<=\\)\w:.+')
+                if ($fullDiskPath.Success) {
+                    $pathValue = $fullDiskPath.Value
+                    Write-Host -level $LogLevelInfo -message "[$driverName] is registered correctly at '$pathValue'."
+                }else {
                     Write-Host -level $LogLevelError -message "[$driverName] is NOT registered correctly!"
                     $res = $false
                 }
@@ -200,18 +203,18 @@ function Check-eBPF-Installation {
 # Test the MSI package
 $allTestsPassed = $true
 try {
-    # Install the MSI package
+    # Install the MSI package.
     $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments $buildArtifactParams[$BuildArtifact]["InstallComponents"]
 
-    # Check if the files are installed correctly
-    $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath $buildArtifactParams[$BuildArtifact]["ExpectedFileList"]
+    # Check if the installed files correspont to the expected list.
+    $res =  CompareFiles -targetPath "$InstallPath" -listFilePath $buildArtifactParams[$BuildArtifact]["ExpectedFileList"]
     $allTestsPassed = $allTestsPassed -and $res
 
-    # Check if the eBPF drivers and netsh extension are registered correctly.
+    # Check if the eBPF platform is installed correctly.
     $res = Check-eBPF-Installation
     $allTestsPassed = $allTestsPassed -and $res
 
-    # Uninstall the MSI package
+    # Uninstall the MSI package.
     $res = Uninstall-MsiPackage -MsiPath "$MsiPath"
     $allTestsPassed = $allTestsPassed -and $res
 } catch {
