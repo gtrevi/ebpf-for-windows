@@ -57,7 +57,6 @@ C:\Program Files\ebpf-for-windows\include\libbpf\include\linux\list.h
 C:\Program Files\ebpf-for-windows\include\libbpf\include\linux\overflow.h
 C:\Program Files\ebpf-for-windows\include\libbpf\include\linux\ring_buffer.h
 C:\Program Files\ebpf-for-windows\include\libbpf\include\linux\types.h
-C:\Program Files\ebpf-for-windows\include\libbpf\include\uapi\linux
 C:\Program Files\ebpf-for-windows\include\libbpf\include\uapi\linux\bpf.h
 C:\Program Files\ebpf-for-windows\include\libbpf\include\uapi\linux\bpf_common.h
 C:\Program Files\ebpf-for-windows\include\libbpf\include\uapi\linux\btf.h
@@ -93,7 +92,6 @@ C:\Program Files\ebpf-for-windows\include\net\if_ether.h
 C:\Program Files\ebpf-for-windows\include\net\ip.h
 C:\Program Files\ebpf-for-windows\include\net\tcp.h
 C:\Program Files\ebpf-for-windows\include\net\udp.h
-C:\Program Files\ebpf-for-windows\include\uapi\linux
 C:\Program Files\ebpf-for-windows\include\uapi\linux\bpf.h
 C:\Program Files\ebpf-for-windows\include\uapi\linux\if_ether.h
 C:\Program Files\ebpf-for-windows\include\uapi\linux\in.h

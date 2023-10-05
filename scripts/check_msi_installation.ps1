@@ -26,7 +26,7 @@ function CompareFilesInDirectory {
     $fileList = Get-Content $listFilePath
 
     # Get all files and subdirectories in the target directory
-    $items = Get-ChildItem $targetPath -Recurse
+    $items = Get-ChildItem -Path $TargetPath -File -Recurse | Select-Object FullName
 
     # Initialize a boolean variable to track whether all files were found
     $allFilesFound = $true
@@ -36,28 +36,25 @@ function CompareFilesInDirectory {
 
     # Iterate through each item (file or directory) in the target path
     foreach ($item in $items) {
-        if ($item.GetType() -eq [System.IO.FileInfo]) {
-            # If the item is a file, check if it's in the list
-            if ($fileList -contains $item.Name) {
-                $foundFiles += $item.Name
-            } else {
-                $allFilesFound = $false
-            }
+        # If the item is a file, check if it's in the list
+        if ($fileList -contains $item.FullName) {
+            $foundFiles += $item.FullName
+        } else {
+            $allFilesFound = $false
         }
     }
 
     # Display the found files
     Write-Host "Found Files:"
-    $foundFiles
+    Write-Host $foundFiles
 
     # Display the missing files
     Write-Host "Missing Files:"
     $missingFiles = Compare-Object $fileList $foundFiles -PassThru
-    $missingFiles
+    Write-Host $missingFiles
 
     return $allFilesFound
 }
-
 
 function Install-MsiPackage {
     [CmdletBinding()]
@@ -66,13 +63,15 @@ function Install-MsiPackage {
         [Parameter(Mandatory=$true)] [string]$MsiAdditionalArguments
     )
 
-    $arguments = "/i $MsiPath /quiet /qn /norestart /log msi-install.log $MsiAdditionalArguments"
+    $res = $true
+    $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $MsiAdditionalArguments"
     $process = Start-Process -FilePath msiexec.exe -ArgumentList $arguments -Wait -PassThru
 
     if ($process.ExitCode -eq 0) {
-        Write-Output "Installation successful!"
+        Write-Host "Installation successful!"
     } else {
-        $exceptionMessage = "Installation failed. Exit code: $($process.ExitCode)"
+        $res = $false
+        $exceptionMessage = "Installation FAILED. Exit code: $($process.ExitCode)"
         Write-Host $exceptionMessage
         $logContents = Get-Content -Path "msi-install.log" -ErrorAction SilentlyContinue
         if ($logContents) {
@@ -81,15 +80,45 @@ function Install-MsiPackage {
         } else {
             Write-Host "msi-install.log not found or empty."
         }
-        throw $exceptionMessage
     }
+
+    return $res
+}
+
+function Uninstall-MsiPackage {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)] [string]$MsiPath
+    )
+
+    $res = $true
+    $process = Start-Process -FilePath msiexec.exe -ArgumentList "/x $MsiPath /qn /norestart /log msi-uninstall.log" -Wait -PassThru
+    if ($process.ExitCode -eq 0) {
+        Write-Host "Uninstallation successful!"
+    } else {
+        $res = $false
+        $exceptionMessage = "Uninstallation FAILED. Exit code: $($process.ExitCode)"
+        Write-Host $exceptionMessage
+        $logContents = Get-Content -Path "msi-uninstall.log" -ErrorAction SilentlyContinue
+        if ($logContents) {
+            Write-Host "Contents of msi-uninstall.log:"
+            Write-Host $logContents
+        } else {
+            Write-Host "msi-uninstall.log not found or empty."
+        }
+    }
+
+    return $res
 }
 
 # Test the installation
 $allTestsPassed = $true
 try {
-    Install-MsiPackage -MsiPath $MsiPath -MsiAdditionalArguments "$MsiAdditionalArguments"
-    $allTestsPassed =  CompareFilesInDirectory -targetPath $InstallPath -listFilePath $expectedFileLists[$BuildArtifact]
+    $allTestsPassed = Install-MsiPackage -MsiPath $MsiPath -MsiAdditionalArguments "$MsiAdditionalArguments"
+    $res =  CompareFilesInDirectory -targetPath $InstallPath -listFilePath $expectedFileLists[$BuildArtifact]
+    $allTestsPassed = $allTestsPassed -and $res
+    $res = Uninstall-MsiPackage -MsiPath $MsiPath
+    $allTestsPassed = $allTestsPassed -and $res
 } catch {
     Write-Host "Error: $_"
 }
