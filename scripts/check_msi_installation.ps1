@@ -26,7 +26,7 @@ function CompareFilesInDirectory {
     $ExpectedFiles = Get-Content $listFilePath
 
     # Get all files and subdirectories installed in the target directory
-    $InstalledFiles = Get-ChildItem -Path $TargetPath -File -Recurse | Select-Object FullName
+    $InstalledFiles = Get-ChildItem -Path $targetPath -File -Recurse | Select-Object FullName
 
     # Compare the installed files with the expected binaries
     $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
