@@ -34,9 +34,9 @@ function CompareFilesInDirectory {
     # Initialize an array to store the found files
     $foundFiles = @()
 
-    # Iterate through each item (file or directory) in the target path
+    # Recursively iterate through each file in the target path
     foreach ($item in $items) {
-        # If the item is a file, check if it's in the list
+        # Check if the installed file is in the expected list
         if ($fileList -contains $item.FullName) {
             $foundFiles += $item.FullName
         } else {
