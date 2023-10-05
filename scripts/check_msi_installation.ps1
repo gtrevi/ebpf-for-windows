@@ -11,7 +11,7 @@ $InstallPath = "$env:ProgramFiles\ebpf-for-windows";
 
 # Define the additional arguments to pass to the MSI installer for each build artifact
 $installComponents = @{
-    "Build-x64_Debug" = "ADDLOCAL=ALL"
+    "Build-x64_Debug" = "ADDLOCAL=eBPF_Runtime_Components,eBPF_Runtime_Components_JIT,eBPF_Development,eBPF_Testing"
     "Build-x64-native-only_NativeOnlyRelease" = "ADDLOCAL=eBPF_Runtime_Components"
 }
 
@@ -91,8 +91,6 @@ function Install-MsiPackage {
     return $res
 }
 
-
-
 function Uninstall-MsiPackage {
     [CmdletBinding()]
     param(
@@ -171,7 +169,7 @@ function Check-eBPF-Installation {
         $res = $false
     }
 
-    # Run netsh command and capture the output, and check if the output contains information about the extension.
+    # Run netsh command, capture the output, and check if the output contains information about the extension.
     $output = netsh $eBpfExtensionName show helper
     if ($output -match "The following commands are available:") {
         Write-Host "The '$eBpfExtensionName' netsh extension is correctly registered."
@@ -182,8 +180,8 @@ function Check-eBPF-Installation {
         $res = $false
     }
 
-    # Check if the eBPF JIT service is running.
-    if ($installComponents[$BuildArtifact] -eq "ADDLOCAL=ALL") {
+    # If the JIT option is enabled, check if the eBPF JIT service is running.
+    if ($installComponents[$BuildArtifact] -like "*eBPF_Runtime_Components_JIT*") {
         Write-Host "Checking if the eBPF JIT service is running..."
         $service = Get-Service -Name $eBpfServiceName
         if ($service.Status -eq "Running") {
