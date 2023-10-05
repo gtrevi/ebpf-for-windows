@@ -120,28 +120,6 @@ function Uninstall-MsiPackage {
     return $res
 }
 
-function Get-FullDiskPathFromService {
-    param (
-        [string]$serviceName
-    )
-
-    Write-Host -level $LogLevelInfo -message "Verifying that the service '$serviceName' is registered correctly..."
-
-    # Query for the service and search for the BINARY_PATH_NAME line using regex.
-    $scQueryOutput = & "sc.exe" qc $serviceName
-    $binaryPathLine = $scQueryOutput -split "`n" | Where-Object { $_ -match "BINARY_PATH_NAME\s+:\s+(.*)" }
-    if ($binaryPathLine) {
-        # Extract the full disk path using regex.
-        $binaryPath = $matches[1]
-        $fullDiskPath = [regex]::Match($binaryPath, '(?<=\\)\w:.+')
-        if ($fullDiskPath.Success) {
-            return $fullDiskPath.Value
-        }
-    }
-
-    return $null
-}
-
 function Check-eBPF-Installation {
 
     $res = $true
