@@ -291,9 +291,7 @@ function Import-ResultsFromVM
 
 function Install-eBPFComponentsOnVM
 {
-    param(
-        [Parameter(Mandatory=$true)] [string] $VMName,
-        [Parameter(Mandatory=$false)] [bool] $UseMsi = $false)
+    param([parameter(Mandatory=$true)] [string] $VMName)
 
     Write-Log "Installing eBPF components on $VMName"
     $TestCredential = New-Credential -Username $Admin -AdminPassword $AdminPassword
@@ -305,7 +303,7 @@ function Install-eBPFComponentsOnVM
         Import-Module $WorkingDirectory\common.psm1 -ArgumentList ($LogFileName) -Force -WarningAction SilentlyContinue
         Import-Module $WorkingDirectory\install_ebpf.psm1 -ArgumentList ($WorkingDirectory, $LogFileName) -Force -WarningAction SilentlyContinue
 
-        Install-eBPFComponents -Tracing $true -KMDFVerifier $true -UseMsi $UseMsi
+        Install-eBPFComponents -Tracing $true -KMDFVerifier $true
         Enable-KMDFVerifier
     } -ArgumentList ("eBPF", $LogFileName) -ErrorAction Stop
     Write-Log "eBPF components installed on $VMName" -ForegroundColor Green

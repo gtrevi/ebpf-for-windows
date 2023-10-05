@@ -5,8 +5,7 @@ param ([parameter(Mandatory=$false)][string] $Target = "TEST_VM",
        [parameter(Mandatory=$false)][string] $LogFileName = "TestLog.log",
        [parameter(Mandatory=$false)][string] $WorkingDirectory = $pwd.ToString(),
        [parameter(Mandatory=$false)][string] $TestExecutionJsonFileName = "test_execution.json",
-       [parameter(Mandatory=$false)][string] $SelfHostedRunnerName,
-       [parameter(Mandatory=$false)][bool]   $UseMsi = $false)
+       [parameter(Mandatory=$false)][string] $SelfHostedRunnerName)
 
 Push-Location $WorkingDirectory
 
@@ -37,7 +36,7 @@ Export-BuildArtifactsToVMs -VMList $VMList -ErrorAction Stop
 # Install eBPF Components on the test VM.
 foreach($VM in $VMList) {
     $VMName = $VM.Name
-    Install-eBPFComponentsOnVM -VMName $VMname -ErrorAction Stop -UseMsi $UseMsi
+    Install-eBPFComponentsOnVM -VMName $VMname -ErrorAction Stop
 }
 
 Pop-Location

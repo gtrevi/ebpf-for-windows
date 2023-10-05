@@ -26,7 +26,7 @@ function CompareFilesInDirectory {
     $ExpectedFiles = Get-Content $listFilePath
 
     # Get all files installed in the target directory
-    $InstalledFiles = Get-ChildItem -Path $targetPath -File -Recurse | Select-Object FullName
+    $InstalledFiles = Get-ChildItem -Path $targetPath -File -Recurse | ForEach-Object { $_.FullName }
 
     # Compare the installed files with the expected binaries
     $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
@@ -105,6 +105,23 @@ try {
     $allTestsPassed = Install-MsiPackage -MsiPath $MsiPath -MsiAdditionalArguments "$MsiAdditionalArguments"
     $res =  CompareFilesInDirectory -targetPath $InstallPath -listFilePath $expectedFileLists[$BuildArtifact]
     $allTestsPassed = $allTestsPassed -and $res
+
+    # ```bash
+    # # Verify that the eBPF drivers are running:
+    # sc.exe query eBPFCore
+    # sc.exe query NetEbpfExt
+
+    # # Verify that the netsh extension is operational:
+    # netsh ebpf show prog
+
+    # # Run the unit tests, and expect a full pass:
+    # cd <eBPF install folder>\testing
+    # unit_tests.exe -d yes
+
+    # # Test some additional commands, e.g.:
+    # bpftool prog show
+    # ```
+
     $res = Uninstall-MsiPackage -MsiPath $MsiPath
     $allTestsPassed = $allTestsPassed -and $res
 } catch {

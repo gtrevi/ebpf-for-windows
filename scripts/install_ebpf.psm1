@@ -6,7 +6,7 @@ param ([Parameter(Mandatory=$True)] [string] $WorkingDirectory,
 
 Push-Location $WorkingDirectory
 
-$BinaryPath = "$env:ProgramFiles\ebpf-for-windows";
+$BinaryPath = "$Env:systemroot\system32";
 
 Import-Module $PSScriptRoot\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
 
@@ -122,34 +122,25 @@ function Start-eBPFComponents
 
 function Install-eBPFComponents
 {
-    param([Parameter(Mandatory=$false)] [bool] $Tracing = $false,
-          [Parameter(Mandatory=$false)] [bool] $KMDFVerifier = $false,
-          [Parameter(Mandatory=$false)] [bool] $UseMsi = $false)
+    param([parameter(Mandatory=$false)] [bool] $Tracing = $false,
+          [parameter(Mandatory=$false)] [bool] $KMDFVerifier = $false)
 
-    if ($UseMsi) {
+    # Stop eBPF Components
+    Stop-eBPFComponents
 
-        $res = & Start-Process msiexec.exe -Wait -ArgumentList '/i ebpf-for-windows.msi /quiet /qn /norestart /log install.log ADDLOCAL=ALL'
-        if ($res -ne 0) {
-            throw ("Failed to install the eBPF MSI.")
-        }
-    } else {
-        # Stop eBPF Components
-        Stop-eBPFComponents
-
-        # Copy all binaries to the install folder.
-        Copy-Item *.sys -Destination "$BinaryPath\drivers" -Force -ErrorAction Stop 2>&1 | Write-Log
-        if (Test-Path -Path "drivers") {
-            Copy-Item drivers\*.sys -Destination "$BinaryPath\drivers" -Force -ErrorAction Stop 2>&1 | Write-Log
-        }
-        if (Test-Path -Path "testing\testing") {
-            Copy-Item testing\testing\*.sys -Destination "$BinaryPath\drivers" -Force -ErrorAction Stop 2>&1 | Write-Log
-        }
-        Copy-Item *.dll -Destination "$BinaryPath" -Force -ErrorAction Stop 2>&1 | Write-Log
-        Copy-Item *.exe -Destination "$BinaryPath" -Force -ErrorAction Stop 2>&1 | Write-Log
-
-        # Register all components.
-        Register-eBPFComponents
+    # Copy all binaries to system32.
+    Copy-Item *.sys -Destination "$Env:systemroot\system32\drivers" -Force -ErrorAction Stop 2>&1 | Write-Log
+    if (Test-Path -Path "drivers") {
+        Copy-Item drivers\*.sys -Destination "$Env:systemroot\system32\drivers" -Force -ErrorAction Stop 2>&1 | Write-Log
     }
+    if (Test-Path -Path "testing\testing") {
+        Copy-Item testing\testing\*.sys -Destination "$Env:systemroot\system32\drivers" -Force -ErrorAction Stop 2>&1 | Write-Log
+    }
+    Copy-Item *.dll -Destination "$Env:systemroot\system32" -Force -ErrorAction Stop 2>&1 | Write-Log
+    Copy-Item *.exe -Destination "$Env:systemroot\system32" -Force -ErrorAction Stop 2>&1 | Write-Log
+
+    # Register all components.
+    Register-eBPFComponents
 
     if ($KMDFVerifier) {
         # Enable KMDF verifier and tag tracking.
@@ -173,22 +164,9 @@ function Stop-eBPFComponents
 
 function Uninstall-eBPFComponents
 {
-    param([Parameter(Mandatory=$false)][boolean] $UseMsi = $false)
-
-    if ($UseMsi) {
-
-        $res = & Start-Process msiexec.exe -Wait -ArgumentList '/x ebpf-for-windows.msi /quiet /qn /norestart /log install.log'
-        if ($res -ne 0) {
-            throw ("Failed to uninstall the eBPF MSI.")
-        }
-
-    } else {
-
-        Stop-eBPFComponents
-        Unregister-eBPFComponents
-        Remove-Item "$BinaryPath\drivers\*bpf*" -Force -ErrorAction Stop 2>&1 | Write-Log
-        Remove-Item "$BinaryPath\*bpf*" -Force -ErrorAction Stop 2>&1 | Write-Log
-    }
-
+    Stop-eBPFComponents
+    Unregister-eBPFComponents
+    Remove-Item "$Env:systemroot\system32\drivers\*bpf*" -Force -ErrorAction Stop 2>&1 | Write-Log
+    Remove-Item "$Env:systemroot\system32\*bpf*" -Force -ErrorAction Stop 2>&1 | Write-Log
     wpr.exe -cancel
 }
