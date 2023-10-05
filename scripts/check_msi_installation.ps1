@@ -52,11 +52,12 @@ function CompareFilesInDirectory {
 function Install-MsiPackage {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)] [string]$MsiPath
+        [Parameter(Mandatory=$true)] [string]$MsiPath,
+        [Parameter(Mandatory=$true)] [string]$MsiAdditionalArguments
     )
 
     $res = $true
-    $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $installComponents[$BuildArtifact]"
+    $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $MsiAdditionalArguments"
     $process = Start-Process -FilePath msiexec.exe -ArgumentList $arguments -Wait -PassThru
 
     if ($process.ExitCode -eq 0) {
@@ -106,8 +107,8 @@ function Uninstall-MsiPackage {
 # Test the installation
 $allTestsPassed = $true
 try {
-    $allTestsPassed = Install-MsiPackage -MsiPath $MsiPath -MsiAdditionalArguments "$MsiAdditionalArguments"
-    $res =  CompareFilesInDirectory -targetPath $InstallPath -listFilePath $expectedFileLists[$BuildArtifact]
+    $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments "$installComponents[$BuildArtifact]"
+    $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath "$expectedFileLists[$BuildArtifact]"
     $allTestsPassed = $allTestsPassed -and $res
 
     # # Verify that the eBPF drivers are running:
@@ -116,7 +117,7 @@ try {
     # # Verify that the netsh extension is operational:
     # netsh ebpf show prog
 
-    $res = Uninstall-MsiPackage -MsiPath $MsiPath
+    $res = Uninstall-MsiPackage -MsiPath "$MsiPath"
     $allTestsPassed = $allTestsPassed -and $res
 } catch {
     $allTestsPassed = $false
