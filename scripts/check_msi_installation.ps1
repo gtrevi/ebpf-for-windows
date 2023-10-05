@@ -107,7 +107,7 @@ function Uninstall-MsiPackage {
 # Test the installation
 $allTestsPassed = $true
 try {
-    $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments "$installComponents[$BuildArtifact]"
+    $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments $installComponents[$BuildArtifact]
     $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath "$expectedFileLists[$BuildArtifact]"
     $allTestsPassed = $allTestsPassed -and $res
 
