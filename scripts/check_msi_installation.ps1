@@ -113,7 +113,7 @@ function Uninstall-MsiPackage {
 $allTestsPassed = $true
 try {
     $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments $installComponents[$BuildArtifact]
-    $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath "$expectedFileLists[$BuildArtifact]"
+    $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath $expectedFileLists[$BuildArtifact]
     $allTestsPassed = $allTestsPassed -and $res
 
     # # Verify that the eBPF drivers are running:
