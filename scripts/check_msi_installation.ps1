@@ -12,7 +12,7 @@ $InstallPath = "$env:ProgramFiles\ebpf-for-windows";
 
 # Define the test cases
 $expectedFileLists = @{
-    "Build-x64_Debug" = "..\..\scripts\check_msi_installation_msi_files_debug.txt"
+    "Build-x64_Debug" = "..\..\scripts\check_msi_installation_msi_files_regular_debug.txt"
     "Build-x64-native-only_NativeOnlyRelease" = "..\..\scripts\check_msi_installation_msi_files_nativeonly_release.txt"
 }
 
