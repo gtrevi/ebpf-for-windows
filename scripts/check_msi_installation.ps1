@@ -39,26 +39,30 @@ function CompareFiles {
     )
 
     Write-Host "Comparing files in '$targetPath' with the expected list in '$listFilePath'..."
+    try {
+        # Get all files installed in the target directory.
+        $InstalledFiles = Get-ChildItem -Path $targetPath -File -Recurse | ForEach-Object { $_.FullName }
 
-    # Get all files installed in the target directory.
-    $InstalledFiles = Get-ChildItem -Path $targetPath -File -Recurse | ForEach-Object { $_.FullName }
+        # Read the list of files from the file containing the expected file list.
+        $ExpectedFiles = Get-Content $listFilePath
 
-    # Read the list of files from the file containing the expected file list.
-    $ExpectedFiles = Get-Content $listFilePath
-
-    # Compare the installed files with the expected binaries.
-    $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
-    $ExtraFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
-    if ($MissingFiles -or $ExtraFiles) {
-        Write-Host "Mismatch found between the installed files and the ones in the expected list:" -ForegroundColor Red
-        Write-Host "Missing Files:" -ForegroundColor Red
-        Write-Host $MissingFiles
-        Write-Host "Extra Files:" -ForegroundColor Red
-        Write-Host $ExtraFiles
+        # Compare the installed files with the expected binaries.
+        $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
+        $ExtraFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
+        if ($MissingFiles -or $ExtraFiles) {
+            Write-Host "Mismatch found between the installed files and the ones in the expected list:" -ForegroundColor Red
+            Write-Host "Missing Files:" -ForegroundColor Red
+            Write-Host $MissingFiles
+            Write-Host "Extra Files:" -ForegroundColor Red
+            Write-Host $ExtraFiles
+            return $false
+        } else {
+            Write-Host "All installed files match the expected list." -ForegroundColor Green
+            return $true
+        }
+    } catch {
+        Write-Host "An error occurred while comparing the installed files with the expected list: $_" -ForegroundColor Red
         return $false
-    } else {
-        Write-Host "All installed files match the expected list." -ForegroundColor Green
-        return $true
     }
 }
 
@@ -129,7 +133,7 @@ function Check-eBPF-Installation {
     try {
         $eBpfDrivers.GetEnumerator() | ForEach-Object {
             $driverName = $_.Key
-            Write-Host -level $LogLevelInfo -message "Verifying that the service '$driverName' is registered correctly..."
+            Write-Host "Verifying that the service '$driverName' is registered correctly..."
             # Query for the service and search for the BINARY_PATH_NAME line using regex.
             $scQueryOutput = & "sc.exe" qc $driverName
             $binaryPathLine = $scQueryOutput -split "`n" | Where-Object { $_ -match "BINARY_PATH_NAME\s+:\s+(.*)" }
@@ -139,21 +143,22 @@ function Check-eBPF-Installation {
                 $fullDiskPath = [regex]::Match($binaryPath, '(?<=\\)\w:.+')
                 if ($fullDiskPath.Success) {
                     $pathValue = $fullDiskPath.Value
-                    Write-Host -level $LogLevelInfo -message "[$driverName] is registered correctly at '$pathValue'."
+                    Write-Host "[$driverName] is registered correctly at '$pathValue'."
                 }else {
-                    Write-Host -level $LogLevelError -message "[$driverName] is NOT registered correctly!"
+                    Write-Host "[$driverName] is NOT registered correctly!"
                     $res = $false
                 }
             }
         }
     }
     catch {
-        Write-Host -level $LogLevelError -message "An error occurred while starting the eBPF drivers: $_"
+        Write-Host "An error occurred while starting the eBPF drivers: $_"
         $res = $false
     }
 
     # Run netsh command, capture the output, and check if the output contains information about the extension.
-    $output = netsh $eBpfNetshExtensionName show helper
+    Push-Location $InstallPath
+    $output = netsh ebpf
     if ($output -match "The following commands are available:") {
         Write-Host "The '$eBpfNetshExtensionName' netsh extension is correctly registered."
     } else {
@@ -162,6 +167,7 @@ function Check-eBPF-Installation {
         Write-Host $output
         $res = $false
     }
+    Pop-Location
 
     # If the JIT option is enabled, check if the eBPF JIT service is running.
     if ($buildArtifactParams[$BuildArtifact]["InstallComponents"] -like "*eBPF_Runtime_Components_JIT*") {
