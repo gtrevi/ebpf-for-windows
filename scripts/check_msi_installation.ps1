@@ -27,11 +27,13 @@ function CompareFilesInDirectory {
         [string]$listFilePath
     )
 
-    # Read the list of files from the file containing the expected file list
-    $ExpectedFiles = Get-Content $listFilePath
+    Write-Host "Comparing files in '$targetPath' with the expected list in '$listFilePath'..."
 
     # Get all files installed in the target directory
     $InstalledFiles = Get-ChildItem -Path $targetPath -File -Recurse | ForEach-Object { $_.FullName }
+
+    # Read the list of files from the file containing the expected file list
+    $ExpectedFiles = Get-Content $listFilePath
 
     # Compare the installed files with the expected binaries
     $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
@@ -58,6 +60,8 @@ function Install-MsiPackage {
 
     $res = $true
     $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $MsiAdditionalArguments"
+
+    Write-Host "Installing MSI package with arguments: '$arguments'..."
     $process = Start-Process -FilePath msiexec.exe -ArgumentList $arguments -Wait -PassThru
 
     if ($process.ExitCode -eq 0) {
@@ -84,6 +88,7 @@ function Uninstall-MsiPackage {
         [Parameter(Mandatory=$true)] [string]$MsiPath
     )
 
+    Write-Host "Uninstalling MSI package..."
     $res = $true
     $process = Start-Process -FilePath msiexec.exe -ArgumentList "/x $MsiPath /qn /norestart /log msi-uninstall.log" -Wait -PassThru
     if ($process.ExitCode -eq 0) {
