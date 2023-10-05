@@ -9,25 +9,27 @@ Push-Location $WorkingDirectory
 
 $InstallPath = "$env:ProgramFiles\ebpf-for-windows";
 
-# Define the additional arguments to pass to the MSI installer for each build artifact
-$installComponents = @{
-    "Build-x64_Debug" = "ADDLOCAL=eBPF_Runtime_Components,eBPF_Runtime_Components_JIT,eBPF_Development,eBPF_Testing"
-    "Build-x64-native-only_NativeOnlyRelease" = "ADDLOCAL=eBPF_Runtime_Components"
+# Define a map with:
+# - The additional arguments to pass to the MSI installer for each build artifact
+# - The expected file lists for each build artifact
+$buildArtifactParams = @{
+    "Build-x64_Debug" = @{
+        "InstallComponents" = "ADDLOCAL=eBPF_Runtime_Components,eBPF_Runtime_Components_JIT,eBPF_Development,eBPF_Testing"
+        "ExpectedFileList" = "..\..\scripts\check_msi_installation_files_regular_debug.txt"
+    }
+    "Build-x64-native-only_NativeOnlyRelease" = @{
+        "InstallComponents" = "ADDLOCAL=eBPF_Runtime_Components"
+        "ExpectedFileList" = "..\..\scripts\check_msi_installation_files_nativeonly_release.txt"
+    }
 }
 
-# Define the expected file lists for each build artifact
-$expectedFileLists = @{
-    "Build-x64_Debug" = "..\..\scripts\check_msi_installation_files_regular_debug.txt"
-    "Build-x64-native-only_NativeOnlyRelease" = "..\..\scripts\check_msi_installation_files_nativeonly_release.txt"
-}
-
-# Define a list of eBPF drivers to check
-$EbpfDrivers =
+# Define the eBPF components to check
+$eBpfDrivers =
 @{
     "EbpfCore" = "ebpfcore.sys";
     "NetEbpfExt" = "netebpfext.sys";
 }
-$eBpfExtensionName = "ebpfnetsh"
+$eBpfNetshExtensionName = "ebpfnetsh"
 $eBpfServiceName = "ebpfsvc"
 
 function CompareFilesInDirectory {
@@ -48,7 +50,7 @@ function CompareFilesInDirectory {
     $MissingFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
     $ExtraFiles = Compare-Object -ReferenceObject $ExpectedFiles -DifferenceObject $InstalledFiles | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
     if ($MissingFiles -or $ExtraFiles) {
-        Write-Host "Mismatch found between the installed files and the one in the expected list:" -ForegroundColor Red
+        Write-Host "Mismatch found between the installed files and the ones in the expected list:" -ForegroundColor Red
         Write-Host "Missing Files:" -ForegroundColor Red
         Write-Host $MissingFiles
         Write-Host "Extra Files:" -ForegroundColor Red
@@ -123,7 +125,7 @@ function Get-FullDiskPathFromService {
         [string]$serviceName
     )
 
-    Write-Log -level $LogLevelInfo -message "Get-FullDiskPathFromService($serviceName)"
+    Write-Host -level $LogLevelInfo -message "Get-FullDiskPathFromService($serviceName)"
 
     $scQueryOutput = & "sc.exe" qc $serviceName
 
@@ -151,43 +153,43 @@ function Check-eBPF-Installation {
     # Check if the eBPF drivers are registered correctly.
     Write-Host "Checking if the eBPF drivers are registered correctly..."
     try {
-        $EbpfDrivers.GetEnumerator() | ForEach-Object {
+        $eBpfDrivers.GetEnumerator() | ForEach-Object {
             $driverName = $_.Key
             $currDriverPath = Get-FullDiskPathFromService -serviceName $driverName
             if ($currDriverPath) {
                 if ($?) {
-                    Write-Log -level $LogLevelInfo -message "[$driverName] is registered correctly, starting the driver service..."
+                    Write-Host -level $LogLevelInfo -message "[$driverName] is registered correctly, starting the driver service..."
                 } else {
-                    Write-Log -level $LogLevelError -message "[$driverName] is NOT registered correctly!"
+                    Write-Host -level $LogLevelError -message "[$driverName] is NOT registered correctly!"
                     $res = $false
                 }
             }
         }
     }
     catch {
-        Write-Log -level $LogLevelError -message "An error occurred while starting the eBPF drivers: $_"
+        Write-Host -level $LogLevelError -message "An error occurred while starting the eBPF drivers: $_"
         $res = $false
     }
 
     # Run netsh command, capture the output, and check if the output contains information about the extension.
-    $output = netsh $eBpfExtensionName show helper
+    $output = netsh $eBpfNetshExtensionName show helper
     if ($output -match "The following commands are available:") {
-        Write-Host "The '$eBpfExtensionName' netsh extension is correctly registered."
+        Write-Host "The '$eBpfNetshExtensionName' netsh extension is correctly registered."
     } else {
-        Write-Host "The '$eBpfExtensionName' netsh extension is NOT registered."
-        Write-Host "Output of 'netsh $eBpfExtensionName show helper':"
+        Write-Host "The '$eBpfNetshExtensionName' netsh extension is NOT registered."
+        Write-Host "Output of 'netsh $eBpfNetshExtensionName show helper':"
         Write-Host $output
         $res = $false
     }
 
     # If the JIT option is enabled, check if the eBPF JIT service is running.
-    if ($installComponents[$BuildArtifact] -like "*eBPF_Runtime_Components_JIT*") {
+    if ($buildArtifactParams[$BuildArtifact]["InstallComponents"] -like "*eBPF_Runtime_Components_JIT*") {
         Write-Host "Checking if the eBPF JIT service is running..."
         $service = Get-Service -Name $eBpfServiceName
         if ($service.Status -eq "Running") {
-            Write-Host "The eBPF JIT service is running."
+            Write-Host "The '$eBpfServiceName' service is running."
         } else {
-            Write-Host "The eBPF JIT service is NOT running."
+            Write-Host "The '$eBpfServiceName' service is NOT running."
             $res = $false
         }
     }
@@ -195,15 +197,14 @@ function Check-eBPF-Installation {
     return $res
 }
 
-
 # Test the MSI package
 $allTestsPassed = $true
 try {
     # Install the MSI package
-    $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments $installComponents[$BuildArtifact]
+    $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments $buildArtifactParams[$BuildArtifact]["InstallComponents"]
 
     # Check if the files are installed correctly
-    $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath $expectedFileLists[$BuildArtifact]
+    $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath $buildArtifactParams[$BuildArtifact]["ExpectedFileList"]
     $allTestsPassed = $allTestsPassed -and $res
 
     # Check if the eBPF drivers and netsh extension are registered correctly.
