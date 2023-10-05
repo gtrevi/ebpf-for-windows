@@ -26,19 +26,27 @@ function Install-MsiPackage {
         [Parameter(Mandatory=$true)] [string]$MsiAdditionalArguments
     )
 
-    $arguments = "/i $MsiPath /quiet /qn /norestart /log install.log $MsiAdditionalArguments"
+    $arguments = "/i $MsiPath /quiet /qn /norestart /log msi-install.log $MsiAdditionalArguments"
     $process = Start-Process -FilePath msiexec.exe -ArgumentList $arguments -Wait -PassThru
 
     if ($process.ExitCode -eq 0) {
         Write-Output "Installation successful!"
     } else {
         $exceptionMessage = "Installation failed. Exit code: $($process.ExitCode)"
+        Write-Host $exceptionMessage
+        $logContents = Get-Content -Path "msi-install.log" -ErrorAction SilentlyContinue
+        if ($logContents) {
+            Write-Host "Contents of msi-install.log:"
+            Write-Host $logContents
+        } else {
+            Write-Host "msi-install.log not found or empty."
+        }
         throw $exceptionMessage
     }
 }
 
 try {
-    Install-MsiPackage -MsiPath $MsiPath -AdditionalArguments "$MsiAdditionalArguments"
+    Install-MsiPackage -MsiPath $MsiPath -MsiAdditionalArguments "$MsiAdditionalArguments"
 } catch {
     Write-Host "Error: $_"
 }
