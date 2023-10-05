@@ -21,6 +21,15 @@ $expectedFileLists = @{
     "Build-x64-native-only_NativeOnlyRelease" = "..\..\scripts\check_msi_installation_files_nativeonly_release.txt"
 }
 
+# Define a list of eBPF drivers to check
+$EbpfDrivers =
+@{
+    "EbpfCore" = "ebpfcore.sys";
+    "NetEbpfExt" = "netebpfext.sys";
+}
+$eBpfExtensionName = "ebpfnetsh"
+$eBpfServiceName = "ebpfsvc"
+
 function CompareFilesInDirectory {
     param(
         [string]$targetPath,
@@ -82,6 +91,8 @@ function Install-MsiPackage {
     return $res
 }
 
+
+
 function Uninstall-MsiPackage {
     [CmdletBinding()]
     param(
@@ -109,19 +120,99 @@ function Uninstall-MsiPackage {
     return $res
 }
 
-# Test the installation
+function Get-FullDiskPathFromService {
+    param (
+        [string]$serviceName
+    )
+
+    Write-Log -level $LogLevelInfo -message "Get-FullDiskPathFromService($serviceName)"
+
+    $scQueryOutput = & "sc.exe" qc $serviceName
+
+    # Search for the BINARY_PATH_NAME line using regex.
+    $binaryPathLine = $scQueryOutput -split "`n" | Where-Object { $_ -match "BINARY_PATH_NAME\s+:\s+(.*)" }
+
+    if ($binaryPathLine) {
+
+        # Extract the full disk path using regex.
+        $binaryPath = $matches[1]
+        $fullDiskPath = [regex]::Match($binaryPath, '(?<=\\)\w:.+')
+
+        if ($fullDiskPath.Success) {
+            return $fullDiskPath.Value
+        }
+    }
+
+    return $null
+}
+
+function Check-eBPF-Installation {
+
+    $res = $true
+
+    # Check if the eBPF drivers are registered correctly.
+    Write-Host "Checking if the eBPF drivers are registered correctly..."
+    try {
+        $EbpfDrivers.GetEnumerator() | ForEach-Object {
+            $driverName = $_.Key
+            $currDriverPath = Get-FullDiskPathFromService -serviceName $driverName
+            if ($currDriverPath) {
+                if ($?) {
+                    Write-Log -level $LogLevelInfo -message "[$driverName] is registered correctly, starting the driver service..."
+                } else {
+                    Write-Log -level $LogLevelError -message "[$driverName] is NOT registered correctly!"
+                    $res = $false
+                }
+            }
+        }
+    }
+    catch {
+        Write-Log -level $LogLevelError -message "An error occurred while starting the eBPF drivers: $_"
+        $res = $false
+    }
+
+    # Run netsh command and capture the output, and check if the output contains information about the extension.
+    $output = netsh $eBpfExtensionName show helper
+    if ($output -match "The following commands are available:") {
+        Write-Host "The '$eBpfExtensionName' netsh extension is correctly registered."
+    } else {
+        Write-Host "The '$eBpfExtensionName' netsh extension is NOT registered."
+        Write-Host "Output of 'netsh $eBpfExtensionName show helper':"
+        Write-Host $output
+        $res = $false
+    }
+
+    # Check if the eBPF JIT service is running.
+    if ($installComponents[$BuildArtifact] -eq "ADDLOCAL=ALL") {
+        Write-Host "Checking if the eBPF JIT service is running..."
+        $service = Get-Service -Name $eBpfServiceName
+        if ($service.Status -eq "Running") {
+            Write-Host "The eBPF JIT service is running."
+        } else {
+            Write-Host "The eBPF JIT service is NOT running."
+            $res = $false
+        }
+    }
+
+    return $res
+}
+
+
+# Test the MSI package
 $allTestsPassed = $true
 try {
+    # Install the MSI package
     $allTestsPassed = Install-MsiPackage -MsiPath "$MsiPath" -MsiAdditionalArguments $installComponents[$BuildArtifact]
+
+    # Check if the files are installed correctly
     $res =  CompareFilesInDirectory -targetPath "$InstallPath" -listFilePath $expectedFileLists[$BuildArtifact]
     $allTestsPassed = $allTestsPassed -and $res
 
-    # # Verify that the eBPF drivers are running:
-    # sc.exe query eBPFCore
-    # sc.exe query NetEbpfExt
-    # # Verify that the netsh extension is operational:
-    # netsh ebpf show prog
+    # Check if the eBPF drivers and netsh extension are registered correctly.
+    $res = Check-eBPF-Installation
+    $allTestsPassed = $allTestsPassed -and $res
 
+    # Uninstall the MSI package
     $res = Uninstall-MsiPackage -MsiPath "$MsiPath"
     $allTestsPassed = $allTestsPassed -and $res
 } catch {
