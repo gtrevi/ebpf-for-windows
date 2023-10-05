@@ -3,17 +3,22 @@
 
 param (
         [Parameter(Mandatory=$true)] [string]$BuildArtifact,
-        [Parameter(Mandatory=$true)] [string]$MsiPath,
-        [Parameter(Mandatory=$true)] [string]$MsiAdditionalArguments = "")
+        [Parameter(Mandatory=$true)] [string]$MsiPath)
 
 Push-Location $WorkingDirectory
 
 $InstallPath = "$env:ProgramFiles\ebpf-for-windows";
 
-# Define the test cases
+# Define the additional arguments to pass to the MSI installer for each build artifact
+$installComponents = @{
+    "Build-x64_Debug" = "ADDLOCAL=ALL"
+    "Build-x64-native-only_NativeOnlyRelease" = "ADDLOCAL=eBPF_Runtime_Components"
+}
+
+# Define the expected file lists for each build artifact
 $expectedFileLists = @{
-    "Build-x64_Debug" = "..\..\scripts\check_msi_installation_msi_files_regular_debug.txt"
-    "Build-x64-native-only_NativeOnlyRelease" = "..\..\scripts\check_msi_installation_msi_files_nativeonly_release.txt"
+    "Build-x64_Debug" = "..\..\scripts\check_msi_installation_files_regular_debug.txt"
+    "Build-x64-native-only_NativeOnlyRelease" = "..\..\scripts\check_msi_installation_files_nativeonly_release.txt"
 }
 
 function CompareFilesInDirectory {
@@ -47,12 +52,11 @@ function CompareFilesInDirectory {
 function Install-MsiPackage {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory=$true)] [string]$MsiPath,
-        [Parameter(Mandatory=$true)] [string]$MsiAdditionalArguments
+        [Parameter(Mandatory=$true)] [string]$MsiPath
     )
 
     $res = $true
-    $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $MsiAdditionalArguments"
+    $arguments = "/i $MsiPath /qn /norestart /log msi-install.log $installComponents[$BuildArtifact]"
     $process = Start-Process -FilePath msiexec.exe -ArgumentList $arguments -Wait -PassThru
 
     if ($process.ExitCode -eq 0) {
@@ -106,21 +110,11 @@ try {
     $res =  CompareFilesInDirectory -targetPath $InstallPath -listFilePath $expectedFileLists[$BuildArtifact]
     $allTestsPassed = $allTestsPassed -and $res
 
-    # ```bash
     # # Verify that the eBPF drivers are running:
     # sc.exe query eBPFCore
     # sc.exe query NetEbpfExt
-
     # # Verify that the netsh extension is operational:
     # netsh ebpf show prog
-
-    # # Run the unit tests, and expect a full pass:
-    # cd <eBPF install folder>\testing
-    # unit_tests.exe -d yes
-
-    # # Test some additional commands, e.g.:
-    # bpftool prog show
-    # ```
 
     $res = Uninstall-MsiPackage -MsiPath $MsiPath
     $allTestsPassed = $allTestsPassed -and $res

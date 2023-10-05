@@ -192,7 +192,7 @@ jobs:
       working-directory: ./${{env.BUILD_PLATFORM}}/${{env.BUILD_CONFIGURATION}}
       run: |
         Write-Host "Current Directory: $(Get-Location)"
-        ..\..\scripts\check_msi_installation.ps1 -BuildArtifact "${{inputs.build_artifact}}_${{env.BUILD_CONFIGURATION}}" -MsiPath "ebpf-for-windows.msi" -MsiAdditionalArguments "ADDLOCAL=ALL"
+        ..\..\scripts\check_msi_installation.ps1 -BuildArtifact "${{inputs.build_artifact}}_${{env.BUILD_CONFIGURATION}}" -MsiPath "ebpf-for-windows.msi"
 
     - name: Copy LLVM libs for Fuzzing & Address Sanitizing
       if: steps.skip_check.outputs.should_skip != 'true'
