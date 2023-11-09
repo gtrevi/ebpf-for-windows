@@ -2672,14 +2672,14 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     attr.map_type = BPF_MAP_TYPE_HASH;
     attr.key_size = sizeof(uint32_t);
     attr.value_size = sizeof(uint32_t);
-    attr.max_entries = 2;
+    attr.max_entries = 3;
     attr.map_flags = 0;
     int map_fd = bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
     REQUIRE(map_fd > 0);
 
     // Add an entry.
-    uint32_t key = 42;
     uint64_t value = 12345;
+    uint32_t key = 42;
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd;
     attr.key = (uintptr_t)&key;
@@ -2746,7 +2746,7 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     // Test that the bpf_map_get_next_key returns the first vey of the BPF map if the previous key is not found.
     // Add 3 entries entry.
     for (key = 100; key < 400; key += 100) {
-        value = key * 1000;
+        value = (uint64_t)key * 1000;
         memset(&attr, 0, sizeof(attr));
         attr.map_fd = map_fd;
         attr.key = (uintptr_t)&key;
@@ -2761,7 +2761,7 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     attr.next_key = (uintptr_t)&next_key;
     REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) == 0);
     REQUIRE(value == attr.key * 1000);
-    // ...then ask for a key that is not present, and check that the first key is returned.
+    // ...then lookup a key that is not present, and check that the first key is returned.
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd;
     attr.key = 400;
