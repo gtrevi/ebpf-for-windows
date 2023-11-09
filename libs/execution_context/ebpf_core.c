@@ -945,6 +945,11 @@ _ebpf_core_protocol_map_get_next_key(
     retval = ebpf_map_next_key(
         map, next_key_length, previous_key_length == 0 ? NULL : request->previous_key, reply->next_key);
 
+    // If the next key was not found, return the first key (if it wasn't already looked up).
+    if (retval == EBPF_NO_MORE_KEYS && previous_key_length != 0) {
+        retval = ebpf_map_next_key(map, next_key_length, NULL, reply->next_key);
+    }
+
     reply->header.length = reply_length;
 
 Done:
