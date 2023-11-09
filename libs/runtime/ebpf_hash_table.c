@@ -818,6 +818,7 @@ ebpf_hash_table_next_key_pointer_and_value(
         // either.
         if (!found_entry && previous_key != NULL) {
             result = EBPF_KEY_NOT_FOUND;
+            goto Done;
         }
 
         if (next_entry) {
