@@ -3050,7 +3050,7 @@ TEST_CASE("bind_tail_call_max_exceed", "[libbpf]")
     // Querying beyond the last key will loopback to the first key.
     REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) == 0);
     REQUIRE(key == first_key);
-    REQUIRE(val == first_val)
+    REQUIRE(val == first_val);
 
     // Create a hook for the bind program.
     single_instance_hook_t hook(EBPF_PROGRAM_TYPE_BIND, EBPF_ATTACH_TYPE_BIND);
