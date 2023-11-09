@@ -2713,7 +2713,7 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     attr.key = (uintptr_t)&key;
     attr.next_key = (uintptr_t)&next_key;
     REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) < 0);
-    //REQUIRE(errno == ENOENT);
+    // REQUIRE(errno == ENOENT);
     REQUIRE(attr.key == init_key);
     REQUIRE(attr.value == init_value)
 
@@ -3048,7 +3048,7 @@ TEST_CASE("bind_tail_call_max_exceed", "[libbpf]")
     // REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) < 0);
     // REQUIRE(errno == ENOENT);
     // Querying beyond the last key will loopback to the first key.
-    REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) ==0 0);
+    REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) == 0 0);
     REQUIRE(key == first_key);
     REQUIRE(val == first_val)
 
