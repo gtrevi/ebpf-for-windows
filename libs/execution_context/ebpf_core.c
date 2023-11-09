@@ -947,7 +947,7 @@ _ebpf_core_protocol_map_get_next_key(
 
     // If the pervious key was not found, return the first key (if it wasn't already looked up).
     if (retval == EBPF_KEY_NOT_FOUND) {
-        assert(previous_key_length == 0);
+        ebpf_assert(previous_key_length != 0);
         retval = ebpf_map_next_key(map, next_key_length, NULL, reply->next_key);
     }
 
