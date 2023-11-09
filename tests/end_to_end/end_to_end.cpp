@@ -742,14 +742,11 @@ bindmonitor_test(ebpf_execution_type_t execution_type)
 
     uint64_t pid;
     REQUIRE(bpf_map_get_next_key(process_map_fd, NULL, &pid) == 0);
-    uint64_t init_pid = pid;
     REQUIRE(pid != 0);
     REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) == 0);
     REQUIRE(pid != 0);
-    // REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) < 0);
-    // REQUIRE(errno == ENOENT);
-    REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) == 0);
-    REQUIRE(init_pid == pid);
+    REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) < 0);
+    REQUIRE(errno == ENOENT);
 
     hook.detach_and_close_link(&link);
 
@@ -863,14 +860,11 @@ bindmonitor_tailcall_test(ebpf_execution_type_t execution_type)
 
     uint64_t pid;
     REQUIRE(bpf_map_get_next_key(process_map_fd, NULL, &pid) == 0);
-    uint64_t init_pid = pid;
     REQUIRE(pid != 0);
     REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) == 0);
     REQUIRE(pid != 0);
-    // REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) < 0);
-    // REQUIRE(errno == ENOENT);
-    REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) == 0);
-    REQUIRE(init_pid == pid);
+    REQUIRE(bpf_map_get_next_key(process_map_fd, &pid, &pid) < 0);
+    REQUIRE(errno == ENOENT);
 
     hook.detach_and_close_link(&link);
 
