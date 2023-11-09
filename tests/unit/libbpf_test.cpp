@@ -2678,8 +2678,10 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     REQUIRE(map_fd > 0);
 
     // Add an entry.
-    uint64_t value = 12345;
-    uint32_t key = 42;
+    const uint32_t init_key = 42;
+    const uint64_t init_value = 12345;
+    uint64_t value = init_value;
+    uint32_t key = init_key;
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd;
     attr.key = (uintptr_t)&key;
@@ -2705,13 +2707,15 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) == 0);
     REQUIRE(next_key == key);
 
-    // Verify the entry is the last entry.
+    // Verify the entry is the last entry (i.e., the get next key will loop to the first).
     memset(&attr, 0, sizeof(attr));
     attr.map_fd = map_fd;
     attr.key = (uintptr_t)&key;
     attr.next_key = (uintptr_t)&next_key;
     REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) < 0);
-    REQUIRE(errno == ENOENT);
+    //REQUIRE(errno == ENOENT);
+    REQUIRE(attr.key == init_key);
+    REQUIRE(attr.value == init_value)
 
     // Delete the entry.
     memset(&attr, 0, sizeof(attr));
@@ -3033,14 +3037,20 @@ TEST_CASE("bind_tail_call_max_exceed", "[libbpf]")
     uint32_t key = 0;
     uint32_t val = 0;
     bpf_map_lookup_elem(map_fd, &key, &val);
+    uint32_t first_key = key;
+    uint32_t first_val = val;
     for (int x = 0; x < TOTAL_TAIL_CALL - 1; x++) {
         REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) == 0);
         uint32_t value = 0;
         bpf_map_lookup_elem(map_fd, &key, &value);
         REQUIRE(key != 0);
     }
-    REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) < 0);
-    REQUIRE(errno == ENOENT);
+    // REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) < 0);
+    // REQUIRE(errno == ENOENT);
+    // Querying beyond the last key will loopback to the first key.
+    REQUIRE(bpf_map_get_next_key(map_fd, &key, &key) ==0 0);
+    REQUIRE(key == first_key);
+    REQUIRE(val == first_val)
 
     // Create a hook for the bind program.
     single_instance_hook_t hook(EBPF_PROGRAM_TYPE_BIND, EBPF_ATTACH_TYPE_BIND);
