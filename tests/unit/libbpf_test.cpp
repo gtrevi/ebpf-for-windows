@@ -2761,7 +2761,7 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     attr.value = (uintptr_t)&value;
     attr.next_key = (uintptr_t)&next_key;
     REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) == 0);
-    uint64_t first_key = attr.next_key;
+    uint64_t first_key = next_key;
     // ...then lookup a key that is not present, and check that the first key is returned.
     key = 400;
     value = 0;
