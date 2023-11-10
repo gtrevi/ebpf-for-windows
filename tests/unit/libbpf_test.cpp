@@ -2743,30 +2743,35 @@ TEST_CASE("BPF_MAP_GET_NEXT_KEY etc.", "[libbpf]")
     REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) < 0);
     REQUIRE(errno == ENOENT);
 
-    // // Test that the bpf_map_get_next_key returns the first key of the BPF map if the previous key is not found.
-    // // Add 3 entries entry.
-    // for (key = 100; key < 400; key += 100) {
-    //     value = (uint64_t)key * 10;
-    //     memset(&attr, 0, sizeof(attr));
-    //     attr.map_fd = map_fd;
-    //     attr.key = (uintptr_t)&key;
-    //     attr.value = (uintptr_t)&value;
-    //     REQUIRE(bpf(BPF_MAP_UPDATE_ELEM, &attr, sizeof(attr)) == 0);
-    // }
-    // // Start looping from the first key...
-    // memset(&attr, 0, sizeof(attr));
-    // attr.map_fd = map_fd;
-    // attr.key = 100;
-    // attr.next_key = (uintptr_t)&next_key;
-    // REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) == 0);
-    // REQUIRE(value == attr.key * 10);
-    // // ...then lookup a key that is not present, and check that the first key is returned.
-    // memset(&attr, 0, sizeof(attr));
-    // attr.map_fd = map_fd;
-    // attr.key = 400;
-    // attr.next_key = (uintptr_t)&next_key;
-    // REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) == 0);
-    // REQUIRE(value == 100 * 10); // Check it returned the first key.
+    // Test that the bpf_map_get_next_key returns the first key of the BPF map if the previous key is not found.
+    // Add 3 entries entry.
+    for (key = 100; key < 400; key += 100) {
+        value = (uint64_t)key * 10;
+        memset(&attr, 0, sizeof(attr));
+        attr.map_fd = map_fd;
+        attr.key = (uintptr_t)&key;
+        attr.value = (uintptr_t)&value;
+        REQUIRE(bpf(BPF_MAP_UPDATE_ELEM, &attr, sizeof(attr)) == 0);
+    }
+    // Start looping from the first key...
+    key = 100;
+    value = 0;
+    memset(&attr, 0, sizeof(attr));
+    attr.map_fd = map_fd;
+    attr.key = (uintptr_t)&key;
+    attr.value = (uintptr_t)&value;
+    REQUIRE(bpf(BPF_MAP_LOOKUP_ELEM, &attr, sizeof(attr)) == 0);
+    REQUIRE(value == attr.key * 10);
+    // ...then lookup a key that is not present, and check that the first key is returned.
+    key = 400;
+    value = 0;
+    memset(&attr, 0, sizeof(attr));
+    attr.map_fd = map_fd;
+    attr.key = (uintptr_t)&key;
+    attr.value = (uintptr_t)&value;
+    attr.next_key = (uintptr_t)&next_key;
+    REQUIRE(bpf(BPF_MAP_GET_NEXT_KEY, &attr, sizeof(attr)) == 0);
+    REQUIRE(value == 100 * 10); // Check it returned the first key.
 
     Platform::_close(map_fd);
 }
