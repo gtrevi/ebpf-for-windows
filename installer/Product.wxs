@@ -787,12 +787,18 @@ SPDX-License-Identifier: MIT
 				<File Id="EBPFCORE_USERSIM.PDB" Name="ebpfcore_usersim.pdb" Source="$(var.EbpfCore_Usersim.TargetDir)ebpfcore_usersim.pdb" />
 			</Component>
 			<?if $(var.Configuration) = Debug ?>
-			<Component Id="EMPTY_UM.DLL" DiskId="1" Guid="{321F2303-53CC-4CF2-8D92-5FCA988BDCB5}">
-				<File Id="EMPTY_UM.DLL" Name="empty_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\empty_um.dll" />
-			</Component>
-			<Component Id="EMPTY_UM.PDB" DiskId="1" Guid="{5A07EE87-FF00-47AB-BC15-0C8E1A5EF04F}">
-				<File Id="EMPTY_UM.PDB" Name="empty_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\empty_um.pdb" />
-			</Component>
+				<Component Id="EMPTY_UM.DLL" DiskId="1" Guid="{321F2303-53CC-4CF2-8D92-5FCA988BDCB5}">
+					<File Id="EMPTY_UM.DLL" Name="empty_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\empty_um.dll" />
+				</Component>
+				<Component Id="EMPTY_UM.PDB" DiskId="1" Guid="{5A07EE87-FF00-47AB-BC15-0C8E1A5EF04F}">
+					<File Id="EMPTY_UM.PDB" Name="empty_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\empty_um.pdb" />
+				</Component>
+				<Component Id="EMPTY.SYS" DiskId="1" Guid="{6CCBDB61-FE2F-4508-BB64-F93126EDD996}">
+					<File Id="EMPTY.SYS" Name="empty.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\empty.sys" />
+				</Component>
+				<Component Id="EMPTY.PDB" DiskId="1" Guid="{6CCBDB61-FE2F-4508-BB64-F93126EDD996}">
+					<File Id="EMPTY.PDB" Name="empty.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\empty.pdb" />
+				</Component>
 			<?endif?>
 			<Component Id="ENCAP_REFLECT_PACKET.O" DiskId="1" Guid="{767274A3-97F5-4F35-BB27-1A7166708AD8}">
 				<File Id="ENCAP_REFLECT_PACKET.O" Name="encap_reflect_packet.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\encap_reflect_packet.o" />
@@ -801,30 +807,45 @@ SPDX-License-Identifier: MIT
 				<File Id="ENCAP_REFLECT_PACKET.SYS" Name="encap_reflect_packet.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\encap_reflect_packet.sys" />
 			</Component>
 			<?if $(var.Configuration) = Debug ?>
-			<Component Id="INVALID_MAPS1_UM.DLL" DiskId="1" Guid="{BC4496CD-3006-4EBF-96FE-D840E63E02AA}">
-				<File Id="INVALID_MAPS1_UM.DLL" Name="invalid_maps1_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps1_um.dll" />
-			</Component>
-			<Component Id="INVALID_MAPS1_UM.PDB" DiskId="1" Guid="{FAA16483-274A-455E-AB84-31216F9302F8}">
-				<File Id="INVALID_MAPS1_UM.PDB" Name="invalid_maps1_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps1_um.pdb" />
-			</Component>
-			<Component Id="INVALID_MAPS2_UM.DLL" DiskId="1" Guid="{65CB9F94-05BD-41A8-BF76-99BCF99B324E}">
-				<File Id="INVALID_MAPS2_UM.DLL" Name="invalid_maps2_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps2_um.dll" />
-			</Component>
-			<Component Id="INVALID_MAPS2_UM.PDB" DiskId="1" Guid="{94D8208D-832A-4274-A142-6BF2BCE453B5}">
-				<File Id="INVALID_MAPS2_UM.PDB" Name="invalid_maps2_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps2_um.pdb" />
-			</Component>
-			<Component Id="INVALID_MAPS3_UM.DLL" DiskId="1" Guid="{F29DFA6E-ED91-443D-971B-89401FAB7A15}">
-				<File Id="INVALID_MAPS3_UM.DLL" Name="invalid_maps3_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps3_um.dll" />
-			</Component>
-			<Component Id="INVALID_MAPS3_UM.PDB" DiskId="1" Guid="{BC0A040E-E84D-471B-9E4B-D69968657300}">
-				<File Id="INVALID_MAPS3_UM.PDB" Name="invalid_maps3_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps3_um.pdb" />
-			</Component>
-			<Component Id="INVALID_HELPERS_UM.DLL" DiskId="1" Guid="{D69A5C0D-C585-4EBC-BC31-D2F08C9E20D0}">
-				<File Id="INVALID_HELPERS_UM.DLL" Name="invalid_helpers_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_helpers_um.dll" />
-			</Component>
-			<Component Id="INVALID_HELPERS_UM.PDB" DiskId="1" Guid="{FE948E83-D312-4D08-A8CE-3CC24F4E6526}">
-				<File Id="INVALID_HELPERS_UM.PDB" Name="invalid_helpers_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_helpers_um.pdb" />
-			</Component>
+				<Component Id="INVALID_MAPS1_UM.DLL" DiskId="1" Guid="{BC4496CD-3006-4EBF-96FE-D840E63E02AA}">
+					<File Id="INVALID_MAPS1_UM.DLL" Name="invalid_maps1_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps1_um.dll" />
+				</Component>
+				<Component Id="INVALID_MAPS1_UM.PDB" DiskId="1" Guid="{FAA16483-274A-455E-AB84-31216F9302F8}">
+					<File Id="INVALID_MAPS1_UM.PDB" Name="invalid_maps1_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps1_um.pdb" />
+				</Component>
+				<Component Id="INVALID_MAPS2_UM.DLL" DiskId="1" Guid="{65CB9F94-05BD-41A8-BF76-99BCF99B324E}">
+					<File Id="INVALID_MAPS2_UM.DLL" Name="invalid_maps2_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps2_um.dll" />
+				</Component>
+				<Component Id="INVALID_MAPS2_UM.PDB" DiskId="1" Guid="{94D8208D-832A-4274-A142-6BF2BCE453B5}">
+					<File Id="INVALID_MAPS2_UM.PDB" Name="invalid_maps2_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps2_um.pdb" />
+				</Component>
+				<Component Id="INVALID_MAPS3_UM.DLL" DiskId="1" Guid="{F29DFA6E-ED91-443D-971B-89401FAB7A15}">
+					<File Id="INVALID_MAPS3_UM.DLL" Name="invalid_maps3_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps3_um.dll" />
+				</Component>
+				<Component Id="INVALID_MAPS3_UM.PDB" DiskId="1" Guid="{BC0A040E-E84D-471B-9E4B-D69968657300}">
+					<File Id="INVALID_MAPS3_UM.PDB" Name="invalid_maps3_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps3_um.pdb" />
+				</Component>
+				<Component Id="INVALID_MAPS1.SYS" DiskId="1" Guid="{BD22F624-8077-4256-B405-93DDBD86565D}">
+					<File Id="INVALID_MAPS1.SYS" Name="invalid_maps1.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps1.sys" />
+				</Component>
+				<Component Id="INVALID_MAPS2.SYS" DiskId="1" Guid="{7287538F-3C8D-4D19-BBE9-DACE41D50DD8}">
+					<File Id="INVALID_MAPS2.SYS" Name="invalid_maps2.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps2.sys" />
+				</Component>
+				<Component Id="INVALID_MAPS3.SYS" DiskId="1" Guid="{63A811DA-B1E5-4496-AB86-AB44B7321643}">
+					<File Id="INVALID_MAPS3.SYS" Name="invalid_maps3.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_maps3.sys" />
+				</Component>
+				<Component Id="INVALID_HELPERS.SYS" DiskId="1" Guid="{7E6237C7-B620-4421-B55E-8FD6D0CA075F}">
+					<File Id="INVALID_HELPERS.SYS" Name="invalid_helpers.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_helpers.sys" />
+				</Component>
+				<Component Id="INVALID_HELPERS.PDB" DiskId="1" Guid="{8A7D4D91-4642-41EB-A29C-ED6D64932F47}">
+					<File Id="INVALID_HELPERS.PDB" Name="invalid_helpers.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_helpers.pdb" />
+				</Component>
+				<Component Id="INVALID_HELPERS_UM.DLL" DiskId="1" Guid="{D69A5C0D-C585-4EBC-BC31-D2F08C9E20D0}">
+					<File Id="INVALID_HELPERS_UM.DLL" Name="invalid_helpers_um.dll" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_helpers_um.dll" />
+				</Component>
+				<Component Id="INVALID_HELPERS_UM.PDB" DiskId="1" Guid="{FE948E83-D312-4D08-A8CE-3CC24F4E6526}">
+					<File Id="INVALID_HELPERS_UM.PDB" Name="invalid_helpers_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\invalid_helpers_um.pdb" />
+				</Component>
 			<?endif?>
 			<Component Id="HAS_OF_MAP.O" DiskId="1" Guid="{c363ade6-46ef-48e7-8f8b-71c90896e0b3}">
 				<File Id="HAS_OF_MAP.O" Name="hash_of_map.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\hash_of_map.o" />
@@ -1030,6 +1051,12 @@ SPDX-License-Identifier: MIT
 			<Component Id="TAIL_CALL_SEQUENTIAL_UM.PDB" DiskId="1" Guid="{7389D611-5068-465E-BFE8-BA485B5C2AC4}">
 				<File Id="TAIL_CALL_SEQUENTIAL_UM.PDB" Name="tail_call_sequential_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\tail_call_sequential_um.pdb" />
 			</Component>
+			<Component Id="TEST_SAMPLE_EBPF_UM.DLL" DiskId="1" Guid="{B843CF4C-D19E-4D66-96CE-073FBAD8E80A}">
+				<File Id="TEST_SAMPLE_EBPF_UM.DLL" Name="test_sample_ebpf_um.dll" Source="$(var.api_test.TargetDir)test_sample_ebpf_um.dll" />
+			</Component>
+			<Component Id="TEST_SAMPLE_EBPF_UM.PDB" DiskId="1" Guid="{66461EA1-B893-4505-9148-65FF23759364}">
+				<File Id="TEST_SAMPLE_EBPF_UM.PDB" Name="test_sample_ebpf_um.pdb" Source="$(var.api_test.TargetDir)test_sample_ebpf_um.pdb" />
+			</Component>
 			<Component Id="TEST_SAMPLE_EBPF.O" DiskId="1" Guid="{5E7F82E9-9631-44C6-A597-18DD96C87C44}">
 				<File Id="TEST_SAMPLE_EBPF.O" Name="test_sample_ebpf.o" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\test_sample_ebpf.o" />
 			</Component>
@@ -1044,6 +1071,9 @@ SPDX-License-Identifier: MIT
 			</Component>
 			<Component Id="TEST_UTILITY_HELPERS_UM.PDB" DiskId="1" Guid="{71D4CB23-B5A6-445E-8C01-9DD66E803424}">
 				<File Id="TEST_UTILITY_HELPERS_UM.PDB" Name="test_utility_helpers_um.pdb" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\test_utility_helpers_um.pdb" />
+			</Component>
+			<Component Id="TEST_UTILITY_HELPERS.SYS" DiskId="1" Guid="{1FC062D6-EE81-4816-9DD7-72D84C0AA56B}">
+				<File Id="TEST_UTILITY_HELPERS.SYS" Name="test_utility_helpers.sys" Source="$(var.SolutionDir)$(var.Platform)\$(var.Configuration)\test_utility_helpers.sys" />
 			</Component>
 			<Component Id="UNIT_TESTS.EXE" DiskId="1" Guid="{CCF26677-3DDF-424F-80E8-184F65E323BA}">
 				<File Id="UNIT_TESTS.EXE" Name="unit_tests.exe" Source="$(var.unit_tests.TargetDir)unit_tests.exe" />

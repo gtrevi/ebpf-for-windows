@@ -228,6 +228,27 @@ $vc_redist_dir = Join-Path -Path $env:VCToolsRedistDir '\debug_nonredist\x64\Mic
 $copy_redist=$false
 
 ##
+## Assert that the MSI includes all the debug/test files as well
+##
+$productFilePath = "..\installer\Product.wxs"
+Write-Host "Check that all debug/test files are present in $productFilePath...."
+$productContent = Get-Content $productFilePath -Raw
+$notFoundCount = 0
+foreach ($file in $built_test_files) {
+    $pattern = "File Id=`"$($file.ToUpper())`" Name=`"$file`""
+    if ($productContent -notmatch $pattern) {
+        Write-Host "File '$file' not found in Product.wxs."
+        $notFoundCount++
+    }
+}
+if ($notFoundCount -eq 0) {
+    Write-Host "All debug/test files are present in Product.wxs."
+} else {
+    Write-Host "$notFoundCount files were not found in Product.wxs."
+	exit 1
+}
+
+##
 ## Process command-line options
 ##
 foreach ($arg in $args) {
