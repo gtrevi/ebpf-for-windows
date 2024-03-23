@@ -22,13 +22,21 @@
 #include "net/ip.h"
 #include "net/udp.h"
 
-SEC("maps")
-struct bpf_map_def dropped_packet_map = {
-    .type = BPF_MAP_TYPE_ARRAY, .key_size = sizeof(uint32_t), .value_size = sizeof(uint64_t), .max_entries = 1};
+struct
+{
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __type(key, uint32_t);
+    __type(value, uint64_t);
+    __uint(max_entries, 1);
+} dropped_packet_map SEC(".maps");
 
-SEC("maps")
-struct bpf_map_def interface_index_map = {
-    .type = BPF_MAP_TYPE_ARRAY, .key_size = sizeof(uint32_t), .value_size = sizeof(uint32_t), .max_entries = 1};
+struct
+{
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __type(key, uint32_t);
+    __type(value, uint32_t);
+    __uint(max_entries, 1);
+} interface_index_map SEC(".maps");
 
 SEC("xdp")
 int
@@ -53,8 +61,9 @@ DropPacket(xdp_md_t* ctx)
         }
     }
 
-    if ((char*)ctx->data + sizeof(ETHERNET_HEADER) + sizeof(IPV4_HEADER) + sizeof(UDP_HEADER) > (char*)ctx->data_end)
+    if ((char*)ctx->data + sizeof(ETHERNET_HEADER) + sizeof(IPV4_HEADER) + sizeof(UDP_HEADER) > (char*)ctx->data_end) {
         goto Done;
+    }
 
     ethernet_header = (ETHERNET_HEADER*)ctx->data;
     if (ntohs(ethernet_header->Type) == 0x0800) {
@@ -63,13 +72,15 @@ DropPacket(xdp_md_t* ctx)
         if (ipv4_header->Protocol == IPPROTO_UDP) {
             // UDP.
             char* next_header = (char*)ipv4_header + sizeof(uint32_t) * ipv4_header->HeaderLength;
-            if ((char*)next_header + sizeof(UDP_HEADER) > (char*)ctx->data_end)
+            if ((char*)next_header + sizeof(UDP_HEADER) > (char*)ctx->data_end) {
                 goto Done;
+            }
             UDP_HEADER* udp_header = (UDP_HEADER*)((char*)ipv4_header + sizeof(uint32_t) * ipv4_header->HeaderLength);
             if (ntohs(udp_header->length) <= sizeof(UDP_HEADER)) {
                 long* count = bpf_map_lookup_elem(&dropped_packet_map, &key);
-                if (count)
+                if (count) {
                     *count = (*count + 1);
+                }
                 rc = XDP_DROP;
             }
         }

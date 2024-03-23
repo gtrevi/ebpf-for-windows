@@ -4,7 +4,7 @@
 #include "Verifier.h"
 #include "api_common.hpp"
 #include "ebpf_api.h"
-#include "ebpf_platform.h"
+#include "ebpf_shared_framework.h"
 #include "ebpf_verifier_wrapper.hpp"
 #include "platform.hpp"
 #include "windows_platform_service.hpp"
@@ -60,7 +60,7 @@ verify_byte_code(
         info.type = get_program_type_windows(*program_type);
     } catch (std::runtime_error e) {
         error << "error: " << e.what();
-        *error_message = allocate_string(error.str());
+        *error_message = allocate_string(error.str(), error_message_size);
         return EBPF_VERIFICATION_FAILED;
     }
 

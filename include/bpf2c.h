@@ -19,7 +19,6 @@ typedef unsigned long long uint64_t;
 #define UINT32_MAX ((uint32_t)0xFFFFFFFF)
 
 #else
-#include <intrin.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -73,6 +72,19 @@ extern "C"
     } map_entry_t;
 
     /**
+     * @brief Map initial values.
+     * This structure contains the initial values for a map. The values are used to initialize the map when the
+     * program is loaded. Values are specified as strings and are converted to the appropriate type based on the
+     * map definition. Only BPF_MAP_TYPE_ARRAY_OF_MAPS and BPF_MAP_TYPE_PROG_ARRAY map types are supported.
+     */
+    typedef struct _map_initial_values
+    {
+        const char* name;    // Name of the map.
+        size_t count;        // Number of values in the map.
+        const char** values; // Array of strings containing the initial values.
+    } map_initial_values_t;
+
+    /**
      * @brief Program entry.
      * This structure contains the address of the program and additional information about the program.
      */
@@ -96,6 +108,7 @@ extern "C"
         ebpf_attach_type_t* expected_attach_type; ///< Expected attach type of the program.
         const uint8_t* program_info_hash;         ///< Hash of the program info.
         size_t program_info_hash_length;          ///< Length of the program info hash.
+        const char* program_info_hash_type;       ///< Type of the program info hash
     } program_entry_t;
 
     /**
@@ -128,6 +141,9 @@ extern "C"
             _Outptr_result_buffer_maybenull_(*size) const uint8_t** hash,
             _Out_ size_t* size); ///< Returns the hash of the ELF file used to generate this module.
         void (*version)(_Out_ bpf2c_version_t* version);
+        void (*map_initial_values)(
+            _Outptr_result_buffer_maybenull_(*count) map_initial_values_t** map_initial_values,
+            _Out_ size_t* count); ///< Returns the list of initial values for maps in this module.
     } metadata_table_t;
 
     /**

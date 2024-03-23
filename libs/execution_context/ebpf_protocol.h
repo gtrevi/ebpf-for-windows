@@ -42,6 +42,9 @@ typedef enum _ebpf_operation_id
     EBPF_OPERATION_LOAD_NATIVE_MODULE,
     EBPF_OPERATION_LOAD_NATIVE_PROGRAMS,
     EBPF_OPERATION_PROGRAM_TEST_RUN,
+    EBPF_OPERATION_MAP_UPDATE_ELEMENT_BATCH,
+    EBPF_OPERATION_MAP_DELETE_ELEMENT_BATCH,
+    EBPF_OPERATION_MAP_GET_NEXT_KEY_VALUE_BATCH,
 } ebpf_operation_id_t;
 
 typedef enum _ebpf_code_type
@@ -63,6 +66,7 @@ typedef enum _ebpf_ec_function
     EBPF_EC_FUNCTION_LOG
 } ebpf_ec_function_t;
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 typedef struct _ebpf_operation_resolve_helper_request
 {
     struct _ebpf_operation_header header;
@@ -88,7 +92,9 @@ typedef struct _ebpf_operation_resolve_map_reply
     struct _ebpf_operation_header header;
     uintptr_t address[1];
 } ebpf_operation_resolve_map_reply_t;
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 typedef struct _ebpf_operation_create_program_request
 {
     struct _ebpf_operation_header header;
@@ -103,7 +109,9 @@ typedef struct _ebpf_operation_create_program_reply
     struct _ebpf_operation_header header;
     ebpf_handle_t program_handle;
 } ebpf_operation_create_program_reply_t;
+#endif
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 typedef struct _ebpf_operation_load_code_request
 {
     struct _ebpf_operation_header header;
@@ -111,6 +119,7 @@ typedef struct _ebpf_operation_load_code_request
     ebpf_code_type_t code_type;
     uint8_t code[1];
 } ebpf_operation_load_code_request_t;
+#endif
 
 typedef struct _ebpf_operation_create_map_request
 {
@@ -266,6 +275,7 @@ typedef struct _ebpf_operation_close_handle_request
     ebpf_handle_t handle;
 } ebpf_operation_close_handle_request_t;
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 typedef struct _ebpf_operation_get_ec_function_request
 {
     struct _ebpf_operation_header header;
@@ -277,6 +287,7 @@ typedef struct _ebpf_operation_get_ec_function_reply
     struct _ebpf_operation_header header;
     uintptr_t address;
 } ebpf_operation_get_ec_function_reply_t;
+#endif
 
 typedef struct _ebpf_operation_get_program_info_request
 {
@@ -361,6 +372,8 @@ typedef struct _ebpf_operation_ring_buffer_map_query_buffer_reply
     struct _ebpf_operation_header header;
     // Address to user-space read-only buffer for the ring-buffer records.
     uint64_t buffer_address;
+    // The current consumer offset, so that subsequent reads can start from here.
+    size_t consumer_offset;
 } ebpf_operation_ring_buffer_map_query_buffer_reply_t;
 
 typedef struct _ebpf_operation_ring_buffer_map_async_query_request
@@ -451,3 +464,50 @@ typedef struct _ebpf_operation_program_test_run_reply
     uint64_t context_offset;
     uint8_t data[1];
 } ebpf_operation_program_test_run_reply_t;
+
+typedef struct _ebpf_operation_map_update_element_batch_request
+{
+    struct _ebpf_operation_header header;
+    ebpf_handle_t handle;
+    ebpf_map_option_t option;
+    // Count of elements is derived from the length of the request.
+    // Data is a concatenation of key+value.
+    uint8_t data[1];
+} ebpf_operation_map_update_element_batch_request_t;
+
+typedef struct _ebpf_operation_map_update_element_batch_reply
+{
+    struct _ebpf_operation_header header;
+    uint32_t count_of_elements_processed;
+} ebpf_operation_map_update_element_batch_reply_t;
+
+typedef struct _ebpf_operation_map_delete_element_batch_request
+{
+    struct _ebpf_operation_header header;
+    ebpf_handle_t handle;
+    // Count of elements is derived from the length of the request.
+    // Data is a concatenation of keys.
+    uint8_t keys[1];
+} ebpf_operation_map_delete_element_batch_request_t;
+
+typedef struct _ebpf_operation_map_delete_element_batch_reply
+{
+    struct _ebpf_operation_header header;
+    uint32_t count_of_elements_processed;
+} ebpf_operation_map_delete_element_batch_reply_t;
+
+typedef struct _ebpf_operation_map_get_next_key_value_batch_request
+{
+    struct _ebpf_operation_header header;
+    ebpf_handle_t handle;
+    bool find_and_delete;
+    uint8_t previous_key[1];
+} ebpf_operation_map_get_next_key_value_batch_request_t;
+
+typedef struct _ebpf_operation_map_get_next_key_value_batch_reply
+{
+    struct _ebpf_operation_header header;
+    // Count of elements is derived from the length of the reply.
+    // Data is a concatenation of key+value.
+    uint8_t data[1];
+} ebpf_operation_map_get_next_key_value_batch_reply_t;

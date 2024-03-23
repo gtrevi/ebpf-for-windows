@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "api_common.hpp"
-#include "ebpf_platform.h"
 #include "ebpf_program_types.h"
 #include "ebpf_result.h"
+#include "ebpf_shared_framework.h"
 #include "platform.h"
 #include "platform.hpp"
 #include "windows_platform_common.hpp"
@@ -13,7 +13,7 @@
 #include <stdexcept>
 #include <vector>
 
-static ebpf_helper_function_prototype_t*
+static const ebpf_helper_function_prototype_t*
 _get_helper_function_prototype(const ebpf_program_info_t* info, unsigned int n)
 {
     for (uint32_t i = 0; i < info->count_of_program_type_specific_helpers; i++) {
@@ -49,7 +49,7 @@ get_helper_prototype_windows(int32_t n)
 
     verifier_prototype.context_descriptor = info->program_type_descriptor.context_descriptor;
 
-    ebpf_helper_function_prototype_t* raw_prototype = _get_helper_function_prototype(info, n);
+    const ebpf_helper_function_prototype_t* raw_prototype = _get_helper_function_prototype(info, n);
     if (raw_prototype == nullptr) {
         throw std::runtime_error(std::string("helper prototype not found: ") + std::to_string(n));
     }

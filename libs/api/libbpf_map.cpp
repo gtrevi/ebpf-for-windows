@@ -3,6 +3,7 @@
 
 #include "api_internal.h"
 #include "bpf.h"
+#include "ebpf_tracelog.h"
 #include "libbpf.h"
 #include "libbpf_internal.h"
 
@@ -109,8 +110,9 @@ bpf_object__pin_maps(struct bpf_object* obj, const char* path)
     struct bpf_map* map;
     int err;
 
-    if (!obj)
+    if (!obj) {
         return libbpf_err(-ENOENT);
+    }
 
     bpf_object__for_each_map(map, obj)
     {
@@ -134,8 +136,9 @@ bpf_object__pin_maps(struct bpf_object* obj, const char* path)
         }
 
         err = bpf_map__pin(map, pin_path);
-        if (err)
+        if (err) {
             goto err_unpin_maps;
+        }
     }
 
     return 0;
@@ -153,8 +156,9 @@ bpf_object__unpin_maps(struct bpf_object* obj, const char* path)
     struct bpf_map* map;
     int err;
 
-    if (!obj)
+    if (!obj) {
         return libbpf_err(-ENOENT);
+    }
 
     bpf_object__for_each_map(map, obj)
     {
@@ -165,18 +169,20 @@ bpf_object__unpin_maps(struct bpf_object* obj, const char* path)
             int len;
 
             len = snprintf(buf, PATH_MAX, "%s/%s", path, bpf_map__name(map));
-            if (len < 0)
+            if (len < 0) {
                 return libbpf_err(-EINVAL);
-            else if (len >= PATH_MAX)
+            } else if (len >= PATH_MAX) {
                 return libbpf_err(-ENAMETOOLONG);
+            }
             pin_path = buf;
         } else {
             continue;
         }
 
         err = bpf_map__unpin(map, pin_path);
-        if (err)
+        if (err) {
             return libbpf_err(err);
+        }
     }
 
     return 0;
@@ -231,8 +237,9 @@ bpf_object__find_map_by_name(const struct bpf_object* obj, const char* name)
 
     bpf_object__for_each_map(pos, obj)
     {
-        if (pos->name && !strcmp(pos->name, name))
+        if (pos->name && !strcmp(pos->name, name)) {
             return pos;
+        }
     }
     return NULL;
 }
@@ -256,9 +263,27 @@ bpf_map_update_elem(int fd, const void* key, const void* value, uint64_t flags)
 }
 
 int
+bpf_map_update_batch(int fd, const void* keys, const void* values, __u32* count, const struct bpf_map_batch_opts* opts)
+{
+    if (opts->flags != 0) {
+        return libbpf_result_err(EBPF_INVALID_ARGUMENT);
+    }
+    return libbpf_result_err(ebpf_map_update_element_batch(fd, keys, values, count, opts->elem_flags));
+}
+
+int
 bpf_map_delete_elem(int fd, const void* key)
 {
     return libbpf_result_err(ebpf_map_delete_element(fd, key));
+}
+
+int
+bpf_map_delete_batch(int fd, const void* keys, __u32* count, const struct bpf_map_batch_opts* opts)
+{
+    if (opts->flags != 0) {
+        return libbpf_result_err(EBPF_INVALID_ARGUMENT);
+    }
+    return libbpf_result_err(ebpf_map_delete_element_batch(fd, keys, count, opts->elem_flags));
 }
 
 int
@@ -268,9 +293,40 @@ bpf_map_lookup_elem(int fd, const void* key, void* value)
 }
 
 int
+bpf_map_lookup_batch(
+    int fd,
+    void* in_batch,
+    void* out_batch,
+    void* keys,
+    void* values,
+    __u32* count,
+    const struct bpf_map_batch_opts* opts)
+{
+    if (opts->flags != 0) {
+        return libbpf_result_err(EBPF_INVALID_ARGUMENT);
+    }
+    return libbpf_result_err(
+        ebpf_map_lookup_element_batch(fd, in_batch, out_batch, keys, values, count, opts->elem_flags));
+}
+
+int
 bpf_map_lookup_and_delete_elem(int fd, const void* key, void* value)
 {
     return libbpf_result_err(ebpf_map_lookup_and_delete_element(fd, key, value));
+}
+
+int
+bpf_map_lookup_and_delete_batch(
+    int fd,
+    void* in_batch,
+    void* out_batch,
+    void* keys,
+    void* values,
+    __u32* count,
+    const struct bpf_map_batch_opts* opts)
+{
+    return libbpf_result_err(
+        ebpf_map_lookup_and_delete_element_batch(fd, in_batch, out_batch, keys, values, count, opts->flags));
 }
 
 int
@@ -311,8 +367,9 @@ ring_buffer__new(int map_fd, ring_buffer_sample_fn sample_cb, void* ctx, const s
         std::unique_ptr<ring_buffer_t> ring_buffer = std::make_unique<ring_buffer_t>();
         ring_buffer_subscription_t* subscription = nullptr;
         result = ebpf_ring_buffer_map_subscribe(map_fd, ctx, sample_cb, &subscription);
-        if (result != EBPF_SUCCESS)
+        if (result != EBPF_SUCCESS) {
             goto Exit;
+        }
         ring_buffer->subscriptions.push_back(subscription);
         local_ring_buffer = ring_buffer.release();
     } catch (const std::bad_alloc&) {
@@ -320,16 +377,18 @@ ring_buffer__new(int map_fd, ring_buffer_sample_fn sample_cb, void* ctx, const s
         goto Exit;
     }
 Exit:
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         EBPF_LOG_FUNCTION_ERROR(result);
+    }
     EBPF_RETURN_POINTER(ring_buffer_t*, local_ring_buffer);
 }
 
 void
 ring_buffer__free(struct ring_buffer* ring_buffer)
 {
-    for (auto it = ring_buffer->subscriptions.begin(); it != ring_buffer->subscriptions.end(); it++)
+    for (auto it = ring_buffer->subscriptions.begin(); it != ring_buffer->subscriptions.end(); it++) {
         (void)ebpf_ring_buffer_map_unsubscribe(*it);
+    }
     ring_buffer->subscriptions.clear();
     delete ring_buffer;
 }
@@ -337,8 +396,9 @@ ring_buffer__free(struct ring_buffer* ring_buffer)
 const char*
 libbpf_bpf_map_type_str(enum bpf_map_type t)
 {
-    if (t < 0 || t >= _countof(_ebpf_map_display_names))
+    if (t < 0 || t >= _countof(_ebpf_map_display_names)) {
         return nullptr;
+    }
 
     return _ebpf_map_display_names[t];
 }

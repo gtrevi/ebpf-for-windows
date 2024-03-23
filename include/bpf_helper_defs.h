@@ -14,7 +14,7 @@
  * @param[in] key Key to use when searching map.
  * @return Pointer to the value if found or NULL.
  */
-EBPF_HELPER(void*, bpf_map_lookup_elem, (struct bpf_map * map, void* key));
+EBPF_HELPER(void*, bpf_map_lookup_elem, (void* map, void* key));
 #ifndef __doxygen
 #define bpf_map_lookup_elem ((bpf_map_lookup_elem_t)BPF_FUNC_map_lookup_elem)
 #endif
@@ -30,7 +30,7 @@ EBPF_HELPER(void*, bpf_map_lookup_elem, (struct bpf_map * map, void* key));
  * @retval -EBPF_NO_MEMORY Unable to allocate resources for this
  *  entry.
  */
-EBPF_HELPER(int64_t, bpf_map_update_elem, (struct bpf_map * map, void* key, void* value, uint64_t flags));
+EBPF_HELPER(int64_t, bpf_map_update_elem, (void* map, void* key, void* value, uint64_t flags));
 #ifndef __doxygen
 #define bpf_map_update_elem ((bpf_map_update_elem_t)BPF_FUNC_map_update_elem)
 #endif
@@ -43,7 +43,7 @@ EBPF_HELPER(int64_t, bpf_map_update_elem, (struct bpf_map * map, void* key, void
  * @retval EBPF_SUCCESS The operation was successful.
  * @retval -EBPF_INVALID_ARGUMENT One or more parameters are invalid.
  */
-EBPF_HELPER(int64_t, bpf_map_delete_elem, (struct bpf_map * map, void* key));
+EBPF_HELPER(int64_t, bpf_map_delete_elem, (void* map, void* key));
 #ifndef __doxygen
 #define bpf_map_delete_elem ((bpf_map_delete_elem_t)BPF_FUNC_map_delete_elem)
 #endif
@@ -55,7 +55,7 @@ EBPF_HELPER(int64_t, bpf_map_delete_elem, (struct bpf_map * map, void* key));
  * @param[in] key Key to use when searching map.
  * @return Pointer to the value if found or NULL.
  */
-EBPF_HELPER(void*, bpf_map_lookup_and_delete_elem, (struct bpf_map * map, void* key));
+EBPF_HELPER(void*, bpf_map_lookup_and_delete_elem, (void* map, void* key));
 #ifndef __doxygen
 #define bpf_map_lookup_and_delete_elem ((bpf_map_lookup_and_delete_elem_t)BPF_FUNC_map_lookup_and_delete_elem)
 #endif
@@ -69,7 +69,7 @@ EBPF_HELPER(void*, bpf_map_lookup_and_delete_elem, (struct bpf_map * map, void* 
  * @retval EBPF_SUCCESS The operation was successful.
  * @retval -EBPF_INVALID_ARGUMENT One or more parameters are invalid.
  */
-EBPF_HELPER(int64_t, bpf_tail_call, (void* ctx, struct bpf_map* prog_array_map, uint32_t index));
+EBPF_HELPER(int64_t, bpf_tail_call, (void* ctx, void* prog_array_map, uint32_t index));
 #ifndef __doxygen
 #define bpf_tail_call ((bpf_tail_call_t)BPF_FUNC_tail_call)
 #endif
@@ -140,7 +140,7 @@ EBPF_HELPER(int, bpf_csum_diff, (void* from, int from_size, void* to, int to_siz
  * @param[in] flags Flags indicating if notification for new data availability should be sent.
  * @returns 0 on success and a negative value on error.
  */
-EBPF_HELPER(int, bpf_ringbuf_output, (struct bpf_map * ring_buffer, void* data, uint64_t size, uint64_t flags));
+EBPF_HELPER(int, bpf_ringbuf_output, (void* ring_buffer, void* data, uint64_t size, uint64_t flags));
 #ifndef __doxygen
 #define bpf_ringbuf_output ((bpf_ringbuf_output_t)BPF_FUNC_ringbuf_output)
 #endif
@@ -264,7 +264,7 @@ bpf_printk(const char* fmt, ...);
  *  entry.
  * @retval -EBPF_OUT_OF_SPACE Map is full and BPF_EXIST was not supplied.
  */
-EBPF_HELPER(int64_t, bpf_map_push_elem, (struct bpf_map * map, void* value, uint64_t flags));
+EBPF_HELPER(int64_t, bpf_map_push_elem, (void* map, void* value, uint64_t flags));
 #ifndef __doxygen
 #define bpf_map_push_elem ((bpf_map_push_elem_t)BPF_FUNC_map_push_elem)
 #endif
@@ -279,7 +279,7 @@ EBPF_HELPER(int64_t, bpf_map_push_elem, (struct bpf_map * map, void* value, uint
  * @retval EBPF_SUCCESS The operation was successful.
  * @retval -EBPF_OBJECT_NOT_FOUND The map is empty.
  */
-EBPF_HELPER(int64_t, bpf_map_pop_elem, (struct bpf_map * map, void* value));
+EBPF_HELPER(int64_t, bpf_map_pop_elem, (void* map, void* value));
 #ifndef __doxygen
 #define bpf_map_pop_elem ((bpf_map_pop_elem_t)BPF_FUNC_map_pop_elem)
 #endif
@@ -294,7 +294,7 @@ EBPF_HELPER(int64_t, bpf_map_pop_elem, (struct bpf_map * map, void* value));
  * @retval EBPF_SUCCESS The operation was successful.
  * @retval -EBPF_OBJECT_NOT_FOUND The map is empty.
  */
-EBPF_HELPER(int64_t, bpf_map_peek_elem, (struct bpf_map * map, void* value));
+EBPF_HELPER(int64_t, bpf_map_peek_elem, (void* map, void* value));
 #ifndef __doxygen
 #define bpf_map_peek_elem ((bpf_map_pop_elem_t)BPF_FUNC_map_peek_elem)
 #endif
@@ -338,4 +338,79 @@ EBPF_HELPER(uint64_t, bpf_get_current_logon_id, (const void* ctx));
 EBPF_HELPER(int32_t, bpf_is_current_admin, (const void* ctx));
 #ifndef __doxygen
 #define bpf_is_current_admin ((bpf_is_current_admin_t)BPF_FUNC_is_current_admin)
+#endif
+
+/**
+ * @brief Copy memory from one location to another.
+ *
+ * @param[in] destination Destination buffer.
+ * @param[in] destination_size Size of the destination buffer.
+ * @param[in] source Source buffer.
+ * @param[in] source_size Size of the source buffer.
+ *
+ * @retval 0 The operation was successful.
+ * @retval -EINVAL One or more parameters are invalid.
+ */
+EBPF_HELPER(long, bpf_memcpy, (void* destination, uint32_t destination_size, const void* source, uint32_t source_size));
+#ifndef __doxygen
+#define bpf_memcpy ((bpf_memcpy_t)BPF_FUNC_memcpy)
+#endif
+
+/**
+ * @brief Compare two memory regions.
+ *
+ * @param[in] memory1 First memory region.
+ * @param[in] memory1_size Size of the first memory region.
+ * @param[in] memory2 Second memory region.
+ * @param[in] memory2_size Size of the second memory region.
+ *
+ * @returns 0 if the contents of memory regions are equal, a negative value if the contents of memory1 is less than the
+ * contents memory2, or a positive value if the contents memory1 is greater than the contents memory2.
+ */
+
+EBPF_HELPER(int, bpf_memcmp, (const void* memory1, uint32_t memory1_size, const void* memory2, uint32_t memory2_size));
+#ifndef __doxygen
+#define bpf_memcmp ((bpf_memcmp_t)BPF_FUNC_memcmp)
+#endif
+
+/**
+ * @brief Set memory to a specific value.
+ *
+ * @param[in] memory Memory region to set.
+ * @param[in] size Size of the memory region.
+ * @param[in] value Value to set the memory region to.
+ *
+ * @returns Pointer to the memory region, or a negative error in case of failure.
+ */
+
+EBPF_HELPER(long, bpf_memset, (void* memory, uint32_t size, int value));
+#ifndef __doxygen
+#define bpf_memset ((bpf_memset_t)BPF_FUNC_memset)
+#endif
+
+/**
+ * @brief Copy memory from one location to another, handling overlapping regions.
+ *
+ * @param[in] destination Destination buffer.
+ * @param[in] destination_size Size of the destination buffer.
+ * @param[in] source Source buffer.
+ * @param[in] source_size Size of the source buffer.
+ *
+ * @retval 0 The operation was successful.
+ * @retval -EINVAL One or more parameters are invalid.
+ */
+
+EBPF_HELPER(
+    long, bpf_memmove, (void* destination, uint32_t destination_size, const void* source, uint32_t source_size));
+#ifndef __doxygen
+#define bpf_memmove ((bpf_memmove_t)BPF_FUNC_memmove)
+#endif
+
+#if __clang__
+#define memcpy(dest, src, dest_size) bpf_memcpy(dest, dest_size, src, dest_size)
+#define memcmp(mem1, mem2, mem1_size) bpf_memcmp(mem1, mem1_size, mem2, mem1_size)
+#define memset(mem, value, mem_size) bpf_memset(mem, mem_size, value)
+#define memmove(dest, src, dest_size) bpf_memmove(dest, dest_size, src, dest_size)
+#define memcpy_s bpf_memcpy
+#define memmove_s bpf_memmove
 #endif

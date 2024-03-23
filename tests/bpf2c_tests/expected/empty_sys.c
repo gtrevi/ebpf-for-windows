@@ -182,8 +182,8 @@ static map_entry_t _maps[] = {
          8,                  // Size in bytes of a map value.
          1,                  // Maximum number of entries allowed in the map.
          0,                  // Inner map index.
-         PIN_NONE,           // Pinning type for the map.
-         0,                  // Identifier for a map template.
+         LIBBPF_PIN_NONE,    // Pinning type for the map.
+         13,                 // Identifier for a map template.
          0,                  // The id of the inner map template.
      },
      "port_map"},
@@ -208,8 +208,16 @@ static void
 _get_version(_Out_ bpf2c_version_t* version)
 {
     version->major = 0;
-    version->minor = 7;
+    version->minor = 14;
     version->revision = 0;
 }
 
-metadata_table_t empty_metadata_table = {sizeof(metadata_table_t), _get_programs, _get_maps, _get_hash, _get_version};
+static void
+_get_map_initial_values(_Outptr_result_buffer_(*count) map_initial_values_t** map_initial_values, _Out_ size_t* count)
+{
+    *map_initial_values = NULL;
+    *count = 0;
+}
+
+metadata_table_t empty_metadata_table = {
+    sizeof(metadata_table_t), _get_programs, _get_maps, _get_hash, _get_version, _get_map_initial_values};

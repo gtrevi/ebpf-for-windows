@@ -20,7 +20,7 @@ typedef struct
 typedef struct _test_client_context
 {
     netebpfext_helper_base_client_context_t base;
-    ebpf_context_descriptor_t* ctx_descriptor;
+    const ebpf_context_descriptor_t* ctx_descriptor;
     netebpfext_fuzzer_metadata_t metadata;
 } test_client_context_t;
 
@@ -69,6 +69,8 @@ FUZZ_EXPORT int __cdecl LLVMFuzzerInitialize(int*, char***) { return 0; }
 
 FUZZ_EXPORT int __cdecl LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
+    ebpf_watchdog_timer_t watchdog_timer;
+
     if (size < sizeof(netebpfext_fuzzer_metadata_t)) {
         return 0;
     }
@@ -89,7 +91,7 @@ FUZZ_EXPORT int __cdecl LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     std::vector<GUID> guids = helper.program_info_provider_guids();
     for (const auto& guid : guids) {
         ebpf_extension_data_t extension_data = helper.get_program_info_provider_data(guid);
-        auto& program_data = *reinterpret_cast<ebpf_program_data_t*>(extension_data.data);
+        auto& program_data = *reinterpret_cast<const ebpf_program_data_t*>(extension_data.data);
         if (prog_type == (bpf_prog_type_t)program_data.program_info->program_type_descriptor.bpf_prog_type) {
             client_context.ctx_descriptor = program_data.program_info->program_type_descriptor.context_descriptor;
             break;
@@ -123,6 +125,9 @@ FUZZ_EXPORT int __cdecl LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     case BPF_PROG_TYPE_SOCK_OPS:
         (void)helper.test_sock_ops_v4(&parameters);
         (void)helper.test_sock_ops_v6(&parameters);
+        break;
+    // Explicitly ignore all other program types.
+    default:
         break;
     }
 

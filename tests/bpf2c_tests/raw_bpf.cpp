@@ -3,18 +3,26 @@
 
 #define CATCH_CONFIG_MAIN
 
-#include "bpf_assembler.h"
 #include "bpf_code_generator.h"
 #include "catch_wrapper.hpp"
 #include "test_helpers.h"
+#include "watchdog.h"
+
 extern "C"
 {
 #include "ubpf.h"
 }
 
+// Note: The bpf_assembler.h file is not included here because it has a conflicting definition of
+// the bpf_insn struct.
+std::vector<ebpf_inst>
+bpf_assembler(std::istream& input);
+
 #define SEPARATOR "\\"
 
 #define UBPF_CODE_SIZE 8192
+
+CATCH_REGISTER_LISTENER(_watchdog)
 
 std::string
 env_or_default(const char* environment_variable, const char* default_value)
@@ -110,6 +118,7 @@ parse_test_file(const std::string& data_file)
     return {prefix, mem, result, instructions};
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 ubpf_vm*
 prepare_ubpf_vm(const std::vector<ebpf_inst> instructions)
 {
@@ -187,6 +196,7 @@ run_ubpf_interpret_test(const std::string& data_file)
 
     ubpf_destroy(vm);
 }
+#endif
 
 void
 run_bpf_code_generator_test(const std::string& data_file)
@@ -218,22 +228,39 @@ run_bpf_code_generator_test(const std::string& data_file)
     REQUIRE(system(test_command.c_str()) == 0);
 }
 
-#define DECLARE_TEST(FILE)                                                                                            \
-    TEST_CASE(FILE "_native", "[bpf_code_generator]")                                                                 \
-    {                                                                                                                 \
-        run_bpf_code_generator_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR               \
-                                    "tests" SEPARATOR "" FILE ".data");                                               \
-    }                                                                                                                 \
-    TEST_CASE(FILE "_jit", "[ubpf_jit]")                                                                              \
-    {                                                                                                                 \
-        run_ubpf_jit_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR "tests" SEPARATOR       \
-                          "" FILE ".data");                                                                           \
-    }                                                                                                                 \
+#define DECLARE_NATIVE_TEST(FILE)                                                                       \
+    TEST_CASE(FILE "_native", "[bpf_code_generator]")                                                   \
+    {                                                                                                   \
+        run_bpf_code_generator_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR \
+                                    "tests" SEPARATOR "" FILE ".data");                                 \
+    }
+
+#if !defined(CONFIG_BPF_JIT_DISABLED)
+#define DECLARE_JIT_TEST(FILE)                                                                                  \
+    TEST_CASE(FILE "_jit", "[ubpf_jit]")                                                                        \
+    {                                                                                                           \
+        run_ubpf_jit_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR "tests" SEPARATOR \
+                          "" FILE ".data");                                                                     \
+    }
+#else
+#define DECLARE_JIT_TEST(FILE)
+#endif
+
+#if !defined(CONFIG_BPF_INTERPRETER_DISABLED)
+#define DECLARE_INTERPRET_TEST(FILE)                                                                                  \
     TEST_CASE(FILE "_interpret", "[ubpf_interpret]")                                                                  \
     {                                                                                                                 \
         run_ubpf_interpret_test(".." SEPARATOR ".." SEPARATOR "external" SEPARATOR "ubpf" SEPARATOR "tests" SEPARATOR \
                                 "" FILE ".data");                                                                     \
     }
+#else
+#define DECLARE_INTERPRET_TEST(FILE)
+#endif
+
+#define DECLARE_TEST(FILE)    \
+    DECLARE_NATIVE_TEST(FILE) \
+    DECLARE_JIT_TEST(FILE)    \
+    DECLARE_INTERPRET_TEST(FILE)
 
 // Tests are dependent on the collateral from the https://github.com/iovisor/ubpf project.
 // Most uBPF tests are declared as a block of assembly, an expected result and a block of memory

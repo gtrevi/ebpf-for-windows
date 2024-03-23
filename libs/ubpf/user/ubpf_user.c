@@ -3,7 +3,7 @@
 
 #define _CRT_SECURE_NO_WARNINGS 1
 
-#include "ebpf_platform.h"
+#include "ebpf_shared_framework.h"
 
 #pragma warning(disable : 4013)
 #pragma warning(disable : 4018)
@@ -18,6 +18,12 @@
 
 #include <endian.h>
 #define UBPF_STACK_SIZE 512
+
+#include <stdlib.h>
+
+#define malloc(X) ebpf_allocate((X))
+#define calloc(X, Y) ebpf_allocate((X) * (Y))
+#define free(X) ebpf_free(X)
 
 #pragma warning(push)
 #pragma warning(disable : 4100) // unreferenced formal parameter

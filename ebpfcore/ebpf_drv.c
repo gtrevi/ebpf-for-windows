@@ -9,9 +9,14 @@
  */
 
 #include "ebpf_core.h"
-#include "ebpf_object.h"
+#include "ebpf_tracelog.h"
+#include "ebpf_version.h"
+#include "git_commit_id.h"
 
+#pragma warning(push)
+#pragma warning(disable : 4062) // enumerator 'identifier' in switch of enum 'enumeration' is not handled
 #include <wdf.h>
+#pragma warning(pop)
 
 // Driver global variables
 static DEVICE_OBJECT* _ebpf_driver_device_object;
@@ -33,6 +38,8 @@ static BOOLEAN _ebpf_driver_unloading_flag = FALSE;
 
 // Function codes from 0x800 to 0xFFF are for customer use.
 #define IOCTL_EBPF_CTL_METHOD_BUFFERED CTL_CODE(EBPF_IOCTL_TYPE, 0x900, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+const char ebpf_core_version[] = EBPF_VERSION " " GIT_COMMIT_ID;
 
 //
 // Pre-Declarations
@@ -71,12 +78,16 @@ _ebpf_driver_initialize_device(WDFDRIVER driver_handle, _Out_ WDFDEVICE* device)
     WDF_FILEOBJECT_CONFIG file_object_config;
     UNICODE_STRING ebpf_symbolic_device_name;
 
+    // Log the version of the driver at startup.
+    // This is useful for debugging purposes and to ensure that the version string is present in the binary.
+    EBPF_LOG_MESSAGE(EBPF_TRACELOG_LEVEL_VERBOSE, EBPF_TRACELOG_KEYWORD_CORE, ebpf_core_version);
+
     // Allow access to kernel/system, administrators, and ebpfsvc only.
     DECLARE_CONST_UNICODE_STRING(security_descriptor, EBPF_EXECUTION_CONTEXT_DEVICE_SDDL);
     device_initialize = WdfControlDeviceInitAllocate(driver_handle, &security_descriptor);
     if (!device_initialize) {
         status = STATUS_INSUFFICIENT_RESOURCES;
-        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "WdfControlDeviceInitAllocate", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfControlDeviceInitAllocate, status);
         goto Exit;
     }
 
@@ -86,7 +97,7 @@ _ebpf_driver_initialize_device(WDFDRIVER driver_handle, _Out_ WDFDEVICE* device)
     RtlInitUnicodeString(&ebpf_device_name, EBPF_DEVICE_NAME);
     status = WdfDeviceInitAssignName(device_initialize, &ebpf_device_name);
     if (!NT_SUCCESS(status)) {
-        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "WdfDeviceInitAssignName", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfDeviceInitAssignName, status);
         goto Exit;
     }
 
@@ -99,17 +110,13 @@ _ebpf_driver_initialize_device(WDFDRIVER driver_handle, _Out_ WDFDEVICE* device)
     status = WdfDeviceInitAssignWdmIrpPreprocessCallback(
         device_initialize, _ebpf_driver_query_volume_information, IRP_MJ_QUERY_VOLUME_INFORMATION, NULL, 0);
     if (!NT_SUCCESS(status)) {
-        EBPF_LOG_NTSTATUS_API_FAILURE(
-            EBPF_TRACELOG_KEYWORD_ERROR, "WdfDeviceInitAssignWdmIrpPreprocessCallback", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfDeviceInitAssignWdmIrpPreprocessCallback, status);
         goto Exit;
     }
 
     status = WdfDeviceCreate(&device_initialize, WDF_NO_OBJECT_ATTRIBUTES, device);
     if (!NT_SUCCESS(status)) {
-
-        // Do not free if any other call after WdfDeviceCreate fails.
-        WdfDeviceInitFree(device_initialize);
-        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "WdfDeviceCreate", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfDeviceCreate, status);
         goto Exit;
     }
 
@@ -117,11 +124,14 @@ _ebpf_driver_initialize_device(WDFDRIVER driver_handle, _Out_ WDFDEVICE* device)
     RtlInitUnicodeString(&ebpf_symbolic_device_name, EBPF_SYMBOLIC_DEVICE_NAME);
     status = WdfDeviceCreateSymbolicLink(*device, &ebpf_symbolic_device_name);
     if (!NT_SUCCESS(status)) {
-        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "WdfDeviceCreateSymbolicLink", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfDeviceCreateSymbolicLink, status);
         goto Exit;
     }
 
 Exit:
+    if (device_initialize) {
+        WdfDeviceInitFree(device_initialize);
+    }
     return status;
 }
 
@@ -158,7 +168,7 @@ _ebpf_driver_initialize_objects(
     status =
         WdfDriverCreate(driver_object, registry_path, WDF_NO_OBJECT_ATTRIBUTES, &driver_configuration, driver_handle);
     if (!NT_SUCCESS(status)) {
-        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "WdfDriverCreate", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfDriverCreate, status);
         goto Exit;
     }
 
@@ -176,13 +186,13 @@ _ebpf_driver_initialize_objects(
     io_queue_configuration.EvtIoDeviceControl = _ebpf_driver_io_device_control;
     status = WdfIoQueueCreate(*device, &io_queue_configuration, WDF_NO_OBJECT_ATTRIBUTES, WDF_NO_HANDLE);
     if (!NT_SUCCESS(status)) {
-        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "WdfIoQueueCreate", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfIoQueueCreate, status);
         goto Exit;
     }
 
     status = ebpf_result_to_ntstatus(ebpf_core_initiate());
     if (!NT_SUCCESS(status)) {
-        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "ebpf_core_initiate", status);
+        EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, ebpf_core_initiate, status);
         goto Exit;
     }
 
@@ -203,10 +213,7 @@ static void
 _ebpf_driver_file_close(WDFFILEOBJECT wdf_file_object)
 {
     FILE_OBJECT* file_object = WdfFileObjectWdmGetFileObject(wdf_file_object);
-    ebpf_base_object_t* base_object = file_object->FsContext2;
-    if (base_object != NULL) {
-        base_object->release_reference(base_object);
-    }
+    ebpf_core_close_context(file_object->FsContext2);
 }
 
 static void
@@ -262,7 +269,7 @@ _ebpf_driver_io_device_control(
             );
 
             if (!NT_SUCCESS(status)) {
-                EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, "WdfRequestRetrieveInputBuffer", status);
+                EBPF_LOG_NTSTATUS_API_FAILURE(EBPF_TRACELOG_KEYWORD_ERROR, WdfRequestRetrieveInputBuffer, status);
                 goto Done;
             }
 
@@ -290,7 +297,7 @@ _ebpf_driver_io_device_control(
                     user_request->id, &minimum_request_size, &minimum_reply_size, &async));
                 if (status != STATUS_SUCCESS) {
                     EBPF_LOG_NTSTATUS_API_FAILURE(
-                        EBPF_TRACELOG_KEYWORD_ERROR, "ebpf_core_get_protocol_handler_properties", status);
+                        EBPF_TRACELOG_KEYWORD_ERROR, ebpf_core_get_protocol_handler_properties, status);
                     goto Done;
                 }
 
@@ -301,7 +308,7 @@ _ebpf_driver_io_device_control(
                         request, output_buffer_length, &output_buffer, &actual_output_length);
                     if (!NT_SUCCESS(status)) {
                         EBPF_LOG_NTSTATUS_API_FAILURE(
-                            EBPF_TRACELOG_KEYWORD_ERROR, "WdfRequestRetrieveOutputBuffer", status);
+                            EBPF_TRACELOG_KEYWORD_ERROR, WdfRequestRetrieveOutputBuffer, status);
                         goto Done;
                     }
                     if (output_buffer == NULL) {
@@ -351,6 +358,7 @@ _ebpf_driver_io_device_control(
         }
         break;
     default:
+        status = STATUS_INVALID_DEVICE_REQUEST;
         break;
     }
 
@@ -400,10 +408,13 @@ DriverEntry(_In_ DRIVER_OBJECT* driver_object, _In_ UNICODE_STRING* registry_pat
 
 Exit:
     EBPF_LOG_EXIT();
+    if (!NT_SUCCESS(status)) {
+        ebpf_trace_terminate();
+    }
     return status;
 }
 
-DEVICE_OBJECT*
+_Ret_notnull_ DEVICE_OBJECT*
 ebpf_driver_get_device_object()
 {
     return _ebpf_driver_device_object;

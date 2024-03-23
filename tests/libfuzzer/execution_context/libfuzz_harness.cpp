@@ -161,7 +161,10 @@ class fuzz_wrapper
             throw std::runtime_error("ebpf_core_initiate failed");
         }
         for (const auto& type : _program_types) {
-            program_information_providers.push_back(std::make_unique<_program_info_provider>(type));
+            program_information_providers.push_back(std::make_unique<_program_info_provider>());
+            if (program_information_providers.back()->initialize(type) != EBPF_SUCCESS) {
+                throw std::runtime_error("program_info initialization failed");
+            }
         }
         for (const auto& type : _program_types) {
             std::string name = "program name";
@@ -171,8 +174,8 @@ class fuzz_wrapper
                 type,
                 type,
                 {reinterpret_cast<uint8_t*>(name.data()), name.size()},
-                {reinterpret_cast<uint8_t*>(file.data()), file.size()},
                 {reinterpret_cast<uint8_t*>(section.data()), section.size()},
+                {reinterpret_cast<uint8_t*>(file.data()), file.size()},
                 EBPF_CODE_JIT};
             ebpf_handle_t handle;
             if (ebpf_program_create_and_initialize(&params, &handle) == EBPF_SUCCESS) {
@@ -180,7 +183,7 @@ class fuzz_wrapper
             }
         }
         for (const auto& [name, def] : _map_definitions) {
-            ebpf_utf8_string_t utf8_name{reinterpret_cast<uint8_t*>(const_cast<char*>(name.data())), name.size()};
+            cxplat_utf8_string_t utf8_name{reinterpret_cast<uint8_t*>(const_cast<char*>(name.data())), name.size()};
             ebpf_handle_t handle;
             if (ebpf_core_create_map(&utf8_name, &def, ebpf_handle_invalid, &handle) == EBPF_SUCCESS) {
                 handles.push_back(handle);
@@ -208,10 +211,17 @@ fuzz_ioctl(std::vector<uint8_t>& random_buffer)
 {
     fuzz_wrapper fuzz_state;
     bool async = false;
+    std::vector<uint8_t> request;
     std::vector<uint8_t> reply;
+    uint16_t reply_buffer_length = 0;
     if (random_buffer.size() < sizeof(ebpf_operation_header_t)) {
         return;
     }
+
+    // Use first 2 bytes of random buffer to determine reply buffer length.
+    reply_buffer_length = reinterpret_cast<uint16_t*>(random_buffer.data())[0];
+    reply.resize(reply_buffer_length);
+
     auto header = reinterpret_cast<ebpf_operation_header_t*>(random_buffer.data());
     auto operation_id = header->id;
     header->length = static_cast<uint16_t>(random_buffer.size());
@@ -225,11 +235,7 @@ fuzz_ioctl(std::vector<uint8_t>& random_buffer)
         return;
     }
 
-    if (random_buffer.size() < minimum_request_size) {
-        return;
-    }
-
-    reply.resize(minimum_reply_size);
+    // Intentionally ignoring minimum_request_size and minimum_reply_size.
     result = ebpf_core_invoke_protocol_handler(
         operation_id,
         random_buffer.data(),
@@ -252,6 +258,8 @@ FUZZ_EXPORT int __cdecl LLVMFuzzerInitialize(int*, char***)
 
 FUZZ_EXPORT int __cdecl LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
+    ebpf_watchdog_timer_t watchdog_timer;
+
     std::vector<uint8_t> random_buffer(size);
     memcpy(random_buffer.data(), data, size);
 

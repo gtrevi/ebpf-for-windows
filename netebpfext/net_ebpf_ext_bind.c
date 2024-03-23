@@ -6,7 +6,7 @@
  * @brief This file implements the BIND program type hook on eBPF for Windows.
  */
 
-#include "ebpf_store_helper.h"
+#include "ebpf_shared_framework.h"
 #include "net_ebpf_ext_bind.h"
 
 //
@@ -118,14 +118,20 @@ _net_ebpf_extension_bind_on_client_attach(
         NULL,
         filter_context,
         &filter_context->filter_ids);
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Exit;
+    }
 
     // Set the filter context as the client context's provider data.
     net_ebpf_extension_hook_client_set_provider_data(
         (net_ebpf_extension_hook_client_t*)attaching_client, filter_context);
 
 Exit:
+    if (result != EBPF_SUCCESS) {
+        if (filter_context != NULL) {
+            ExFreePool(filter_context);
+        }
+    }
     NET_EBPF_EXT_RETURN_RESULT(result);
 }
 
@@ -145,48 +151,28 @@ _net_ebpf_extension_bind_on_client_detach(_In_ const net_ebpf_extension_hook_cli
 // NMR Registration Helper Routines.
 //
 
-static NTSTATUS
-_net_ebpf_bind_update_store_entries()
-{
-    NTSTATUS status;
-
-    // Update section information.
-    uint32_t section_info_count = sizeof(_ebpf_bind_section_info) / sizeof(ebpf_program_section_info_t);
-    status = _ebpf_store_update_section_information(&_ebpf_bind_section_info[0], section_info_count);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-
-    // Program information
-    _ebpf_bind_program_info.program_type_descriptor.program_type = EBPF_PROGRAM_TYPE_BIND;
-    status = _ebpf_store_update_program_information(&_ebpf_bind_program_info, 1);
-
-    return status;
-}
-
 NTSTATUS
 net_ebpf_ext_bind_register_providers()
 {
     NTSTATUS status = STATUS_SUCCESS;
 
-    status = _net_ebpf_bind_update_store_entries();
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
+    NET_EBPF_EXT_LOG_ENTRY();
 
     const net_ebpf_extension_program_info_provider_parameters_t program_info_provider_parameters = {
         &_ebpf_bind_program_info_provider_moduleid, &_ebpf_bind_program_info_provider_data};
     const net_ebpf_extension_hook_provider_parameters_t hook_provider_parameters = {
         &_ebpf_bind_hook_provider_moduleid, &_net_ebpf_extension_bind_hook_provider_data};
 
-    NET_EBPF_EXT_LOG_ENTRY();
-
-    _ebpf_bind_program_info.program_type_descriptor.program_type = EBPF_PROGRAM_TYPE_BIND;
     // Set the program type as the provider module id.
     _ebpf_bind_program_info_provider_moduleid.Guid = EBPF_PROGRAM_TYPE_BIND;
     status = net_ebpf_extension_program_info_provider_register(
         &program_info_provider_parameters, &_ebpf_bind_program_info_provider_context);
     if (!NT_SUCCESS(status)) {
+        NET_EBPF_EXT_LOG_MESSAGE_NTSTATUS(
+            NET_EBPF_EXT_TRACELOG_LEVEL_ERROR,
+            NET_EBPF_EXT_TRACELOG_KEYWORD_BIND,
+            "net_ebpf_extension_program_info_provider_register",
+            status);
         goto Exit;
     }
 
@@ -202,6 +188,11 @@ net_ebpf_ext_bind_register_providers()
         NULL,
         &_ebpf_bind_hook_provider_context);
     if (status != EBPF_SUCCESS) {
+        NET_EBPF_EXT_LOG_MESSAGE_NTSTATUS(
+            NET_EBPF_EXT_TRACELOG_LEVEL_ERROR,
+            NET_EBPF_EXT_TRACELOG_KEYWORD_BIND,
+            "net_ebpf_extension_hook_provider_register",
+            status);
         goto Exit;
     }
 
@@ -268,14 +259,26 @@ net_ebpf_ext_resource_allocation_classify(
 
     filter_context = (net_ebpf_extension_wfp_filter_context_t*)filter->context;
     ASSERT(filter_context != NULL);
-    if (filter_context == NULL)
+    if (filter_context == NULL) {
         goto Exit;
+    }
+
+    if (filter_context->client_detached) {
+        NET_EBPF_EXT_LOG_MESSAGE_NTSTATUS(
+            NET_EBPF_EXT_TRACELOG_LEVEL_VERBOSE,
+            NET_EBPF_EXT_TRACELOG_KEYWORD_BIND,
+            "net_ebpf_ext_resource_allocation_classify - Client detach detected.",
+            STATUS_INVALID_PARAMETER);
+        goto Exit;
+    }
 
     attached_client = (net_ebpf_extension_hook_client_t*)filter_context->client_context;
-    if (attached_client == NULL)
-        goto Exit;
-
     if (!net_ebpf_extension_hook_client_enter_rundown(attached_client)) {
+        NET_EBPF_EXT_LOG_MESSAGE_NTSTATUS(
+            NET_EBPF_EXT_TRACELOG_LEVEL_VERBOSE,
+            NET_EBPF_EXT_TRACELOG_KEYWORD_BIND,
+            "net_ebpf_ext_resource_allocation_classify - Client detach detected.",
+            STATUS_INVALID_PARAMETER);
         attached_client = NULL;
         goto Exit;
     }
@@ -308,12 +311,18 @@ net_ebpf_ext_resource_allocation_classify(
             classify_output->actionType = FWP_ACTION_BLOCK;
             classify_output->rights &= ~FWPS_RIGHT_ACTION_WRITE;
             break;
+        // If the program returns any other value, we will block the bind.
+        default:
+            classify_output->actionType = FWP_ACTION_BLOCK;
+            classify_output->rights &= ~FWPS_RIGHT_ACTION_WRITE;
+            break;
         }
     }
 
 Exit:
-    if (attached_client)
+    if (attached_client) {
         net_ebpf_extension_hook_client_leave_rundown(attached_client);
+    }
     return;
 }
 
@@ -341,14 +350,26 @@ net_ebpf_ext_resource_release_classify(
 
     filter_context = (net_ebpf_extension_wfp_filter_context_t*)filter->context;
     ASSERT(filter_context != NULL);
-    if (filter_context == NULL)
+    if (filter_context == NULL) {
         goto Exit;
+    }
+
+    if (filter_context->client_detached) {
+        NET_EBPF_EXT_LOG_MESSAGE_NTSTATUS(
+            NET_EBPF_EXT_TRACELOG_LEVEL_VERBOSE,
+            NET_EBPF_EXT_TRACELOG_KEYWORD_BIND,
+            "net_ebpf_ext_resource_release_classify - Client detach detected.",
+            STATUS_INVALID_PARAMETER);
+        goto Exit;
+    }
 
     attached_client = (net_ebpf_extension_hook_client_t*)filter_context->client_context;
-    if (attached_client == NULL)
-        goto Exit;
-
     if (!net_ebpf_extension_hook_client_enter_rundown(attached_client)) {
+        NET_EBPF_EXT_LOG_MESSAGE_NTSTATUS(
+            NET_EBPF_EXT_TRACELOG_LEVEL_VERBOSE,
+            NET_EBPF_EXT_TRACELOG_KEYWORD_BIND,
+            "net_ebpf_ext_resource_release_classify - Rundown already started.",
+            STATUS_INVALID_PARAMETER);
         attached_client = NULL;
         goto Exit;
     }
@@ -377,8 +398,9 @@ net_ebpf_ext_resource_release_classify(
     classify_output->actionType = FWP_ACTION_PERMIT;
 
 Exit:
-    if (attached_client)
+    if (attached_client) {
         net_ebpf_extension_hook_client_leave_rundown(attached_client);
+    }
     return;
 }
 
@@ -398,18 +420,14 @@ _ebpf_bind_context_create(
 
     if (context_in == NULL || context_size_in < sizeof(bind_md_t)) {
         NET_EBPF_EXT_LOG_MESSAGE(
-            NET_EBPF_EXT_TRACELOG_LEVEL_ERROR, NET_EBPF_EXT_TRACELOG_KEYWORD_ERROR, "Context is required");
+            NET_EBPF_EXT_TRACELOG_LEVEL_ERROR, NET_EBPF_EXT_TRACELOG_KEYWORD_BIND, "Context is required");
         result = EBPF_INVALID_ARGUMENT;
         goto Exit;
     }
 
     bind_context =
-        (bind_md_t*)ExAllocatePoolUninitialized(NonPagedPool, sizeof(bind_md_t), NET_EBPF_EXTENSION_POOL_TAG);
-
-    if (!bind_context) {
-        result = EBPF_NO_MEMORY;
-        goto Exit;
-    }
+        (bind_md_t*)ExAllocatePoolUninitialized(NonPagedPoolNx, sizeof(bind_md_t), NET_EBPF_EXTENSION_POOL_TAG);
+    NET_EBPF_EXT_BAIL_ON_ALLOC_FAILURE_RESULT(NET_EBPF_EXT_TRACELOG_KEYWORD_BIND, bind_context, "bind_context", result);
 
     // Copy the context from the caller.
     memcpy(bind_context, context_in, sizeof(bind_md_t));
@@ -421,6 +439,7 @@ _ebpf_bind_context_create(
     *context = bind_context;
     bind_context = NULL;
     result = EBPF_SUCCESS;
+
 Exit:
     if (bind_context) {
         ExFreePool(bind_context);
@@ -443,7 +462,7 @@ _ebpf_bind_context_destroy(
     bind_md_t* bind_context_out = (bind_md_t*)context_out;
 
     if (!bind_context) {
-        return;
+        goto Exit;
     }
 
     if (context_out != NULL && *context_size_out >= sizeof(bind_md_t)) {
@@ -467,5 +486,7 @@ _ebpf_bind_context_destroy(
     }
 
     ExFreePool(bind_context);
-    NET_EBPF_EXT_LOG_FUNCTION_SUCCESS();
+
+Exit:
+    NET_EBPF_EXT_LOG_EXIT();
 }

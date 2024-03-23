@@ -4,6 +4,7 @@
 #pragma once
 
 #include "bpf_helpers.h"
+#include "cxplat.h"
 #include "ebpf_core_structs.h"
 #include "ebpf_platform.h"
 
@@ -30,7 +31,7 @@ extern "C"
      */
     _Must_inspect_result_ ebpf_result_t
     ebpf_map_create(
-        _In_ const ebpf_utf8_string_t* map_name,
+        _In_ const cxplat_utf8_string_t* map_name,
         _In_ const ebpf_map_definition_in_memory_t* ebpf_map_definition,
         ebpf_handle_t inner_map_handle,
         _Outptr_ ebpf_map_t** map);
@@ -133,6 +134,7 @@ extern "C"
      * null indicates that the first key is to be returned.
      * @param[out] next_key Next key on success.
      * @retval EBPF_SUCCESS The operation was successful.
+     * @retval EBPF_KEY_NOT_FOUND The specified previous key was not found.
      * @retval EBPF_NO_MORE_KEYS There is no key following the specified
      * key in lexicographical order.
      */
@@ -191,11 +193,13 @@ extern "C"
      *
      * @param[in] map Ring buffer map to query.
      * @param[out] buffer Pointer to ring buffer data.
+     * @param[out] consumer_offset Offset of consumer in ring buffer data.
      * @retval EPBF_SUCCESS Successfully mapped the ring buffer.
      * @retval EBPF_INVALID_ARGUMENT Unable to map the ring buffer.
      */
     _Must_inspect_result_ ebpf_result_t
-    ebpf_ring_buffer_map_query_buffer(_In_ const ebpf_map_t* map, _Outptr_ uint8_t** buffer);
+    ebpf_ring_buffer_map_query_buffer(
+        _In_ const ebpf_map_t* map, _Outptr_ uint8_t** buffer, _Out_ size_t* consumer_offset);
 
     /**
      * @brief Return consumed buffer back to the ring buffer map.
@@ -287,6 +291,30 @@ extern "C"
      */
     ebpf_id_t
     ebpf_map_get_id(_In_ const ebpf_map_t* map);
+
+    /**
+     * @brief Copy keys and values from the map to the caller provided buffer.
+     *
+     * @param[in, out] map Map to search and update metadata on.
+     * @param[in] previous_key_length The length of the previous key.
+     * @param[in] previous_key The previous key need not be present. This is the key to start the search from.
+     * @param[in,out] key_and_value_length Length of the key and value buffer on input. On output, the number of bytes
+     * actually written.
+     * @param[out] key_and_value Buffer to write the keys and values into.
+     * @param[in] flags Flags to control the behavior of the function.
+     * @retval EBPF_SUCCESS The operation was successful.
+     * @retval EBPF_KEY_NOT_FOUND The specified previous key was not found.
+     * @retval EBPF_NO_MORE_KEYS There is no key following the specified key.
+     */
+    _Must_inspect_result_ ebpf_result_t
+    ebpf_map_get_next_key_and_value_batch(
+        _Inout_ ebpf_map_t* map,
+        size_t previous_key_length,
+        _In_reads_bytes_opt_(previous_key_length) const uint8_t* previous_key,
+        _Inout_ size_t* key_and_value_length,
+        _Out_writes_bytes_to_(*key_and_value_length, *key_and_value_length) uint8_t* key_and_value,
+        int flags);
+
 #ifdef __cplusplus
 }
 #endif

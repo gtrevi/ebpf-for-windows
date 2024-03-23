@@ -14,12 +14,24 @@
 
 #include <windows.h>
 #include <future>
-
-void
-ebpf_test_pinned_map_enum();
+#include <set>
 
 #define RING_BUFFER_TEST_EVENT_COUNT 10
 
+typedef struct _close_bpf_object
+{
+    void
+    operator()(_In_opt_ _Post_invalid_ bpf_object* object)
+    {
+        if (object != nullptr) {
+            bpf_object__close(object);
+        }
+    }
+} close_bpf_object_t;
+typedef std::unique_ptr<bpf_object, close_bpf_object_t> bpf_object_ptr;
+
+void
+ebpf_test_pinned_map_enum();
 void
 verify_utility_helper_results(_In_ const bpf_object* object, bool helper_override);
 
@@ -31,7 +43,8 @@ typedef struct _ring_buffer_test_event_context
     unsubscribe();
     std::promise<void> ring_buffer_event_promise;
     struct ring_buffer* ring_buffer;
-    std::vector<std::vector<char>>* records;
+    const std::vector<std::vector<char>>* records;
+    std::set<size_t> event_received;
     bool canceled;
     int matched_entry_count;
     int test_event_count;

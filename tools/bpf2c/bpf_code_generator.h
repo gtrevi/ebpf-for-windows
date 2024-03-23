@@ -3,6 +3,7 @@
 #pragma once
 
 #include "ebpf.h"
+#include "ebpf_program_types.h"
 #include "ebpf_structs.h"
 #include "elfio_wrapper.hpp"
 
@@ -12,6 +13,10 @@
 #include <set>
 #include <string>
 #include <vector>
+
+// The CNG algorithm name to use must be listed in
+// https://learn.microsoft.com/en-us/windows/win32/seccng/cng-algorithm-identifiers
+#define EBPF_HASH_ALGORITHM "SHA256"
 
 class bpf_code_generator
 {
@@ -218,14 +223,14 @@ class bpf_code_generator
      * @param[in] section_name Section in the ELF file to parse.
      * @param[in] program_type Program type GUID for the section.
      * @param[in] attach_type Expected attach type GUID for the section.
-     * @param[in] program_info_hash Optional bytes containing hash of the program info.
+     * @param[in] program_info_hash_type Optional bytes containing hash type of the program info.
      */
     void
     parse(
-        const unsafe_string& section_name,
+        const bpf_code_generator::unsafe_string& section_name,
         const GUID& program_type,
         const GUID& attach_type,
-        const std::optional<std::vector<uint8_t>>& program_info_hash);
+        const std::string& program_info_hash_type);
 
     /**
      * @brief Parse global data (currently map information) in the eBPF file.
@@ -233,6 +238,22 @@ class bpf_code_generator
      */
     void
     parse();
+
+    /**
+     * @brief Parse BTF map information in the eBPF file.
+     *
+     * @param[in] section_name Section in the ELF file to parse maps in.
+     */
+    void
+    parse_btf_maps_section(const unsafe_string& name);
+
+    /**
+     * @brief Parse legacy map information in the eBPF file.
+     *
+     * @param[in] section_name Section in the ELF file to parse maps in.
+     */
+    void
+    parse_legacy_maps_section(const unsafe_string& name);
 
     /**
      * @brief Generate C code from the parsed eBPF file.
@@ -249,6 +270,22 @@ class bpf_code_generator
      */
     void
     emit_c_code(std::ostream& output);
+
+    /**
+     * @brief Get the helper function ids used by the current program.
+     *
+     * @return Vector of helper ids.
+     */
+    std::vector<int32_t>
+    get_helper_ids();
+
+    /**
+     * @brief Set the program hash info object
+     *
+     * @param program_info_hash Optional bytes containing hash of the program info.
+     */
+    void
+    set_program_hash_info(const std::optional<std::vector<uint8_t>>& program_info_hash);
 
   private:
     typedef struct _helper_function
@@ -285,6 +322,8 @@ class bpf_code_generator
         // Indices of the maps used in this section.
         std::set<size_t> referenced_map_indices;
         std::map<unsafe_string, helper_function_t> helper_functions;
+        std::string program_info_hash_type{};
+        ebpf_program_info_t* program_info = nullptr;
     } section_t;
 
     typedef struct _line_info
@@ -296,6 +335,14 @@ class bpf_code_generator
     } line_info_t;
 
     typedef std::map<unsafe_string, std::map<size_t, line_info_t>> btf_section_to_instruction_to_line_info_t;
+    typedef std::function<void(
+        const unsafe_string& name,
+        ELFIO::Elf64_Addr value,
+        unsigned char binding,
+        unsigned char type,
+        ELFIO::Elf_Xword size)>
+        symbol_visitor_t;
+
     /**
      * @brief Extract the eBPF byte code from the eBPF file.
      *
@@ -308,13 +355,11 @@ class bpf_code_generator
      *
      * @param[in] program_type Program type GUID.
      * @param[in] attach_type Attach type GUID.
-     * @param[in] program_info_hash Hash of the program information used to verify this program.
+     * @param[in] program_info_hash_type Hash algorithm used for program info hash.
      */
     void
-    set_program_and_attach_type_and_hash(
-        const GUID& program_type,
-        const GUID& attach_type,
-        const std::optional<std::vector<uint8_t>>& program_info_hash);
+    set_program_and_attach_type_and_hash_type(
+        const GUID& program_type, const GUID& attach_type, const std::string& program_info_hash_type);
 
     /**
      * @brief Extract the helper function and map relocation data from the eBPF file.
@@ -389,7 +434,15 @@ class bpf_code_generator
     bool
     is_section_valid(const ELFIO::section* section);
 
-    int pe_section_name_counter;
+    /**
+     * @brief Invoke the visitor for each symbol in the ELF file section.
+     *
+     * @param[in] visitor Visitor to invoke.
+     */
+    void
+    visit_symbols(symbol_visitor_t visitor, const unsafe_string& section_name);
+
+    int pe_section_name_counter{};
     std::map<unsafe_string, section_t> sections;
     section_t* current_section;
     ELFIO::elfio reader;
@@ -398,4 +451,5 @@ class bpf_code_generator
     unsafe_string path;
     btf_section_to_instruction_to_line_info_t section_line_info;
     std::optional<std::vector<uint8_t>> elf_file_hash;
+    std::map<unsafe_string, std::vector<unsafe_string>> map_initial_values;
 };

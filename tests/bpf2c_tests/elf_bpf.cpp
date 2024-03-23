@@ -9,6 +9,7 @@
 #include "capture_helper.hpp"
 #include "catch_wrapper.hpp"
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -88,7 +89,10 @@ enum class _test_mode
     NoVerify,
     VerifyFail,
     UseHash,
+    UseHashSHA512,
+    UseHashX,
     FileNotFound,
+    FileOutput,
 };
 
 void
@@ -105,6 +109,13 @@ run_test_elf(const std::string& elf_file, _test_mode test_mode, const std::optio
     if (test_mode == _test_mode::UseHash) {
         argv.push_back("--hash");
         argv.push_back("SHA256");
+    } else if (test_mode == _test_mode::UseHashSHA512) {
+        argv.push_back("--hash");
+        argv.push_back("SHA512");
+    } else if (test_mode == _test_mode::UseHashX) {
+        argv.push_back("--hash");
+        // Invalid hash algorithm.
+        argv.push_back("SHAX");
     } else {
         argv.push_back("--hash");
         argv.push_back("none");
@@ -118,15 +129,27 @@ run_test_elf(const std::string& elf_file, _test_mode test_mode, const std::optio
         if (option) {
             argv.push_back(option);
         }
+        auto temp_file_path = std::filesystem::temp_directory_path() / std::filesystem::path(name + suffix);
+        std::string temp_file_path_string = temp_file_path.string();
+        if (test_mode == _test_mode::FileOutput) {
+            argv.push_back(temp_file_path_string.c_str());
+        }
         auto [out, err, result_value] = run_test_main(argv);
         switch (test_mode) {
+        case _test_mode::FileOutput:
         case _test_mode::Verify:
         case _test_mode::NoVerify: {
-            auto expected_output = read_contents<std::ifstream>(
+            std::vector<std::string> expected_output = read_contents<std::ifstream>(
                 std::string("expected\\") + name + suffix,
                 {transform_line_directives<'\\'>, transform_line_directives<'/'>, transform_fix_opcode_comment});
-            auto actual_output = read_contents<std::istringstream>(
-                out, {transform_line_directives<'\\'>, transform_line_directives<'/'>});
+            std::vector<std::string> actual_output;
+            if (test_mode == _test_mode::FileOutput) {
+                actual_output = read_contents<std::ifstream>(
+                    temp_file_path_string, {transform_line_directives<'\\'>, transform_line_directives<'/'>});
+            } else {
+                actual_output = read_contents<std::istringstream>(
+                    out, {transform_line_directives<'\\'>, transform_line_directives<'/'>});
+            }
 
             // Find the first line that differs.
             if (actual_output.size() != expected_output.size()) {
@@ -149,16 +172,25 @@ run_test_elf(const std::string& elf_file, _test_mode test_mode, const std::optio
             REQUIRE(result_value != 0);
             REQUIRE(err != "");
         } break;
-        case _test_mode::UseHash:
+        case _test_mode::UseHashSHA512:
+        case _test_mode::UseHash: {
             REQUIRE(result_value == 0);
             REQUIRE(out != "");
+        } break;
+        case _test_mode::UseHashX: {
+            REQUIRE(result_value != 0);
+            REQUIRE(err != "");
+        }
         }
         if (option) {
             argv.pop_back();
         }
+        if (test_mode == _test_mode::FileOutput) {
+            argv.pop_back();
+        }
     };
 
-    test(nullptr, "_raw.c");
+    test("--raw", "_raw.c");
     test("--dll", "_dll.c");
     test("--sys", "_sys.c");
 }
@@ -175,7 +207,9 @@ DECLARE_TEST("bad_map_name", _test_mode::Verify)
 DECLARE_TEST("bindmonitor", _test_mode::Verify)
 DECLARE_TEST("bindmonitor_ringbuf", _test_mode::Verify)
 DECLARE_TEST("bindmonitor_tailcall", _test_mode::Verify)
-DECLARE_TEST_CUSTOM_PROGRAM_TYPE("bpf", _test_mode::Verify, std::string("xdp"))
+DECLARE_TEST("bindmonitor_mt_tailcall", _test_mode::Verify)
+DECLARE_TEST_CUSTOM_PROGRAM_TYPE("bpf", _test_mode::Verify, std::string("bind"))
+DECLARE_TEST_CUSTOM_PROGRAM_TYPE("bpf", _test_mode::FileOutput, std::string("bind"))
 DECLARE_TEST("bpf_call", _test_mode::Verify)
 DECLARE_TEST("cgroup_sock_addr", _test_mode::Verify)
 DECLARE_TEST("cgroup_sock_addr2", _test_mode::Verify)
@@ -185,13 +219,16 @@ DECLARE_TEST("droppacket", _test_mode::Verify)
 DECLARE_TEST("droppacket_unsafe", _test_mode::NoVerify)
 DECLARE_TEST("empty", _test_mode::NoVerify)
 DECLARE_TEST("encap_reflect_packet", _test_mode::Verify)
+DECLARE_TEST("hash_of_map", _test_mode::Verify)
+DECLARE_TEST("inner_map", _test_mode::Verify)
 DECLARE_TEST("invalid_helpers", _test_mode::NoVerify);
 DECLARE_TEST("invalid_maps1", _test_mode::NoVerify);
 DECLARE_TEST("invalid_maps2", _test_mode::NoVerify);
 DECLARE_TEST("invalid_maps3", _test_mode::NoVerify);
 DECLARE_TEST("map", _test_mode::NoVerify)
-DECLARE_TEST("map_in_map", _test_mode::Verify)
-DECLARE_TEST("map_in_map_v2", _test_mode::Verify)
+DECLARE_TEST("map_in_map_btf", _test_mode::Verify)
+DECLARE_TEST("map_in_map_legacy_id", _test_mode::Verify)
+DECLARE_TEST("map_in_map_legacy_idx", _test_mode::Verify)
 DECLARE_TEST("map_reuse", _test_mode::Verify)
 DECLARE_TEST("map_reuse_2", _test_mode::Verify)
 DECLARE_TEST("pidtgid", _test_mode::Verify)
@@ -203,12 +240,17 @@ DECLARE_TEST("sockops", _test_mode::Verify)
 DECLARE_TEST("tail_call", _test_mode::Verify)
 DECLARE_TEST("tail_call_bad", _test_mode::Verify)
 DECLARE_TEST("tail_call_map", _test_mode::Verify)
+DECLARE_TEST("tail_call_max_exceed", _test_mode::Verify)
 DECLARE_TEST("tail_call_multiple", _test_mode::Verify)
+DECLARE_TEST("tail_call_recursive", _test_mode::Verify)
+DECLARE_TEST("tail_call_sequential", _test_mode::Verify)
 DECLARE_TEST("test_sample_ebpf", _test_mode::Verify)
 DECLARE_TEST("test_utility_helpers", _test_mode::Verify)
+DECLARE_TEST("cgroup_sock_addr", _test_mode::UseHashSHA512)
+DECLARE_TEST("cgroup_sock_addr2", _test_mode::UseHashX)
 
 DECLARE_TEST("no_such_file", _test_mode::FileNotFound)
-DECLARE_TEST_CUSTOM_PROGRAM_TYPE("bpf", _test_mode::UseHash, std::string("xdp"))
+DECLARE_TEST_CUSTOM_PROGRAM_TYPE("bpf", _test_mode::UseHash, std::string("bind"))
 
 DECLARE_TEST("bpf", _test_mode::VerifyFail)
 DECLARE_TEST_CUSTOM_PROGRAM_TYPE("bpf", _test_mode::VerifyFail, std::string("invalid"))
@@ -247,4 +289,45 @@ TEST_CASE("bad --hash", "[bpf2c_cli]")
     auto [out, err, result_value] = run_test_main(argv);
     REQUIRE(result_value != 0);
     REQUIRE(!err.empty());
+}
+
+// List of malformed ELF files and the expected error message.
+// Files are named after the SHA1 hash of the ELF file to avoid duplicates and merge conflicts.
+const std::map<std::string, std::string> _malformed_elf_expected_output{
+    {"0BB5D8637905866F80790C88104CFD580258052E",
+     "Failed parsing in struct _E_IDENT field SEVEN.refinement reason constraint failed"},
+    {"2775DA65BC9DC1B1BD6558C1B456C7532CD1BE02",
+     "Failed parsing in struct _SECTION_HEADER_TABLE_ENTRY field none reason constraint failed"},
+    {"3688AF1375D9360872B65D0E67F31E5D9AA8166B", "Can't perform relocation at offset  at offset 0"},
+    {"9A0D5CC0FB24BC6AFB0415DC648388B961FE3E38", "Can't perform relocation at offset  at offset 48"},
+};
+
+TEST_CASE("bad malformed ELF", "[bpf2c_cli]")
+{
+    // For each file in bad\*.o run bpf2c.exe --bpf <file>
+    std::filesystem::path bad_path("bad");
+    for (const auto& entry : std::filesystem::directory_iterator(bad_path)) {
+        std::vector<const char*> argv;
+        argv.push_back("bpf2c.exe");
+        argv.push_back("--bpf");
+        std::string file_path = entry.path().string();
+
+        // Check if we have an expected error for this file.
+        auto expected_error_entry = _malformed_elf_expected_output.find(entry.path().filename().stem().string());
+        if (expected_error_entry == _malformed_elf_expected_output.end()) {
+            // No expected error, fail the test.
+            REQUIRE(entry.path().filename().stem().string() == "Update the expected error");
+        }
+
+        std::string expected_error = expected_error_entry->second;
+        argv.push_back(file_path.c_str());
+
+        // Run bpf2c.exe --bpf <file>
+        auto [out, err, result_value] = run_test_main(argv);
+        REQUIRE(result_value != 0);
+        REQUIRE(!err.empty());
+        // Split err on \n and only keep the first line.
+        err = err.substr(0, err.find('\n'));
+        REQUIRE(err == expected_error);
+    }
 }

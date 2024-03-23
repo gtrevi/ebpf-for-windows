@@ -2,11 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 #define CATCH_CONFIG_MAIN
+#include "bpf_helpers.h"
 #include "catch_wrapper.hpp"
-#include "ebpf_fault_injection.h"
+#include "cxplat_fault_injection.h"
+#include "cxplat_passed_test_log.h"
 #include "netebpf_ext_helper.h"
+#include "watchdog.h"
 
 #include <map>
+#include <stop_token>
+#include <thread>
+
+CATCH_REGISTER_LISTENER(_watchdog)
+CATCH_REGISTER_LISTENER(cxplat_passed_test_log)
 
 #define CONCURRENT_THREAD_RUN_TIME_IN_SECONDS 10
 
@@ -37,8 +45,11 @@ TEST_CASE("query program info", "[netebpfext]")
 {
     netebpf_ext_helper_t helper;
     std::vector<GUID> expected_guids = {
-        EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR, EBPF_PROGRAM_TYPE_SOCK_OPS, EBPF_PROGRAM_TYPE_XDP, EBPF_PROGRAM_TYPE_BIND};
-    std::vector<std::string> expected_program_names = {"sock_addr", "sockops", "bind", "xdp"};
+        EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR,
+        EBPF_PROGRAM_TYPE_SOCK_OPS,
+        EBPF_PROGRAM_TYPE_BIND,
+        EBPF_PROGRAM_TYPE_XDP_TEST};
+    std::vector<std::string> expected_program_names = {"sock_addr", "sockops", "bind", "xdp_test"};
 
     auto guid_less = [](const GUID& lhs, const GUID& rhs) { return memcmp(&lhs, &rhs, sizeof(lhs)) < 0; };
 
@@ -54,7 +65,7 @@ TEST_CASE("query program info", "[netebpfext]")
     std::vector<std::string> program_names;
     for (const auto& guid : guids) {
         ebpf_extension_data_t extension_data = helper.get_program_info_provider_data(guid);
-        auto& program_data = *reinterpret_cast<ebpf_program_data_t*>(extension_data.data);
+        auto& program_data = *reinterpret_cast<const ebpf_program_data_t*>(extension_data.data);
         program_names.push_back(program_data.program_info->program_type_descriptor.name);
     }
 
@@ -109,7 +120,7 @@ TEST_CASE("classify_packet", "[netebpfext]")
     NET_IFINDEX if_index = 0;
     ebpf_extension_data_t npi_specific_characteristics = {.size = sizeof(if_index), .data = &if_index};
     test_xdp_client_context_t client_context = {};
-    client_context.base.desired_attach_type = BPF_XDP;
+    client_context.base.desired_attach_type = BPF_XDP_TEST;
 
     netebpf_ext_helper_t helper(
         &npi_specific_characteristics,
@@ -140,7 +151,7 @@ TEST_CASE("classify_packet", "[netebpfext]")
 TEST_CASE("xdp_context", "[netebpfext]")
 {
     netebpf_ext_helper_t helper;
-    auto xdp_extension_data = helper.get_program_info_provider_data(EBPF_PROGRAM_TYPE_XDP);
+    auto xdp_extension_data = helper.get_program_info_provider_data(EBPF_PROGRAM_TYPE_XDP_TEST);
     auto xdp_program_data = (ebpf_program_data_t*)xdp_extension_data.data;
 
     std::vector<uint8_t> input_data(100);
@@ -149,7 +160,7 @@ TEST_CASE("xdp_context", "[netebpfext]")
     xdp_md_t input_context = {};
     size_t output_context_size = sizeof(xdp_md_t);
     xdp_md_t output_context = {};
-    xdp_md_t* xdp_context;
+    xdp_md_t* xdp_context = nullptr;
 
     input_context.data_meta = 12345;
     input_context.ingress_ifindex = 67890;
@@ -163,6 +174,7 @@ TEST_CASE("xdp_context", "[netebpfext]")
 
     // Positive test:
     // Null context
+    xdp_context = nullptr;
     REQUIRE(
         xdp_program_data->context_create(input_data.data(), input_data.size(), nullptr, 0, (void**)&xdp_context) ==
         EBPF_SUCCESS);
@@ -263,7 +275,7 @@ TEST_CASE("bind_context", "[netebpfext]")
     };
     size_t output_context_size = sizeof(bind_md_t);
     bind_md_t output_context = {};
-    bind_md_t* bind_context;
+    bind_md_t* bind_context = nullptr;
 
     // Positive test:
     // Null data
@@ -278,6 +290,7 @@ TEST_CASE("bind_context", "[netebpfext]")
     REQUIRE(
         bind_program_data->context_create(input_data.data(), input_data.size(), nullptr, 0, (void**)&bind_context) ==
         EBPF_INVALID_ARGUMENT);
+    bind_context = nullptr;
 
     REQUIRE(
         bind_program_data->context_create(
@@ -285,7 +298,7 @@ TEST_CASE("bind_context", "[netebpfext]")
             input_data.size(),
             (const uint8_t*)&input_context,
             sizeof(input_context),
-            (void**)&bind_context) == 0);
+            (void**)&bind_context) == EBPF_SUCCESS);
 
     // Modify the context.
     bind_context->process_id++;
@@ -351,7 +364,18 @@ netebpfext_unit_invoke_sock_addr_program(
     ebpf_result_t return_result = EBPF_SUCCESS;
     auto client_context = (test_sock_addr_client_context_t*)client_binding_context;
     auto sock_addr_context = (bpf_sock_addr_t*)context;
-    int action;
+    int action = SOCK_ADDR_TEST_ACTION_BLOCK;
+    int32_t is_admin = 0;
+
+    ebpf_extension_data_t sock_addr_extension_data =
+        client_context->base.helper->get_program_info_provider_data(EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR);
+    auto sock_addr_program_data = (ebpf_program_data_t*)sock_addr_extension_data.data;
+
+    // Test _ebpf_sock_addr_is_current_admin global helper function.
+    // If the user is not admin, then the default action is to block.
+    bpf_is_current_admin_t is_current_admin = reinterpret_cast<bpf_is_current_admin_t>(
+        sock_addr_program_data->global_helper_function_addresses->helper_function_address[1]);
+    is_admin = is_current_admin(sock_addr_context);
 
     // Verify context fields match what the netebpfext helper set.
     // Note that the helper sets the first four bytes of the address to the
@@ -366,11 +390,13 @@ netebpfext_unit_invoke_sock_addr_program(
         REQUIRE(sock_addr_context->msg_src_port == htons(5678));
     }
 
-    // If the action is round robin, decide the action based on the port number.
-    if (client_context->sock_addr_action == SOCK_ADDR_TEST_ACTION_ROUND_ROBIN) {
-        action = _get_sock_addr_action(sock_addr_context->user_port);
-    } else {
-        action = client_context->sock_addr_action;
+    if (is_admin) {
+        // If the action is round robin, decide the action based on the port number.
+        if (client_context->sock_addr_action == SOCK_ADDR_TEST_ACTION_ROUND_ROBIN) {
+            action = _get_sock_addr_action(sock_addr_context->user_port);
+        } else {
+            action = client_context->sock_addr_action;
+        }
     }
 
     switch (action) {
@@ -500,7 +526,7 @@ sock_addr_thread_function(
     FWP_ACTION_TYPE result;
     uint16_t port_number;
 
-    bool fault_injection_enabled = ebpf_fault_injection_is_enabled();
+    bool fault_injection_enabled = cxplat_fault_injection_is_enabled();
 
     if (start_port != end_port) {
         port_number = start_port - 1;
@@ -534,6 +560,7 @@ sock_addr_thread_function(
 }
 
 // Invoke SOCK_ADDR_CONNECT concurrently with same classify parameters.
+
 TEST_CASE("sock_addr_invoke_concurrent1", "[netebpfext_concurrent]")
 {
     ebpf_extension_data_t npi_specific_characteristics = {};
@@ -684,7 +711,7 @@ TEST_CASE("sock_addr_context", "[netebpfext]")
     };
     size_t output_context_size = sizeof(bpf_sock_addr_t);
     bpf_sock_addr_t output_context = {};
-    bpf_sock_addr_t* sock_addr_context;
+    bpf_sock_addr_t* sock_addr_context = nullptr;
 
     std::vector<uint8_t> input_data(100);
 
@@ -697,12 +724,14 @@ TEST_CASE("sock_addr_context", "[netebpfext]")
             (const uint8_t*)&input_context,
             sizeof(input_context),
             (void**)&sock_addr_context) == EBPF_INVALID_ARGUMENT);
+    sock_addr_context = nullptr;
 
     // Negative test:
     // Context missing
     REQUIRE(
         sock_addr_program_data->context_create(nullptr, 0, nullptr, 0, (void**)&sock_addr_context) ==
         EBPF_INVALID_ARGUMENT);
+    sock_addr_context = nullptr;
 
     REQUIRE(
         sock_addr_program_data->context_create(
@@ -803,7 +832,7 @@ TEST_CASE("sock_ops_context", "[netebpfext]")
     };
     size_t output_context_size = sizeof(bpf_sock_ops_t);
     bpf_sock_ops_t output_context = {};
-    bpf_sock_ops_t* sock_ops_context;
+    bpf_sock_ops_t* sock_ops_context = nullptr;
 
     std::vector<uint8_t> input_data(100);
 

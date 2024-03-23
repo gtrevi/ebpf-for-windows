@@ -10,19 +10,26 @@
 #include "common_tests.h"
 #include "ebpf_structs.h"
 #include "misc_helper.h"
+#include "native_helper.hpp"
 #include "program_helper.h"
 #include "service_helper.h"
 #include "socket_helper.h"
+#include "watchdog.h"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <chrono>
 #include <io.h>
+#include <lsalookup.h>
 #include <mstcpip.h>
 #include <mutex>
+#define _NTDEF_ // UNICODE_STRING is already defined
 #include <ntsecapi.h>
 #include <thread>
 #include <vector>
+using namespace std::chrono_literals;
+
+CATCH_REGISTER_LISTENER(_watchdog)
 
 #define SAMPLE_PATH ""
 
@@ -32,13 +39,15 @@
 #define EBPF_EXTENSION_DRIVER_BINARY_NAME L"netebpfext.sys"
 #define EBPF_EXTENSION_DRIVER_NAME L"netebpfext"
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 #define EBPF_SERVICE_BINARY_NAME L"ebpfsvc.exe"
 #define EBPF_SERVICE_NAME L"ebpfsvc"
+#endif
 
-#define DROP_PACKET_PROGRAM_COUNT 1
+#define SAMPLE_PROGRAM_COUNT 1
 #define BIND_MONITOR_PROGRAM_COUNT 1
 
-#define DROP_PACKET_MAP_COUNT 2
+#define SAMPLE_MAP_COUNT 1
 #define BIND_MONITOR_MAP_COUNT 3
 
 #define WAIT_TIME_IN_MS 5000
@@ -55,8 +64,10 @@ static service_install_helper
 static service_install_helper
     _ebpf_extension_driver_helper(EBPF_EXTENSION_DRIVER_NAME, EBPF_EXTENSION_DRIVER_BINARY_NAME, SERVICE_KERNEL_DRIVER);
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static service_install_helper
     _ebpf_service_helper(EBPF_SERVICE_NAME, EBPF_SERVICE_BINARY_NAME, SERVICE_WIN32_OWN_PROCESS);
+#endif
 
 static int
 _program_load_helper(
@@ -129,8 +140,9 @@ _test_program_load(
         execution_type = EBPF_EXECUTION_JIT;
     }
     REQUIRE(program_execution_type == execution_type);
-    if (execution_type != EBPF_EXECUTION_NATIVE)
+    if (execution_type != EBPF_EXECUTION_NATIVE) {
         REQUIRE(strcmp(program_file_name, file_name) == 0);
+    }
 
     // Next program should not be present.
     uint32_t previous_id = next_id;
@@ -270,34 +282,45 @@ TEST_CASE("pinned_map_enum", "[pinned_map_enum]") { ebpf_test_pinned_map_enum();
     }
 
 #if defined(CONFIG_BPF_JIT_DISABLED)
-#define JIT_LOAD_RESULT -EOTHER
+#define JIT_LOAD_RESULT -ENOTSUP
 #else
 #define JIT_LOAD_RESULT 0
 #endif
 
 #if defined(CONFIG_BPF_INTERPRETER_DISABLED)
-#define INTERPRET_LOAD_RESULT -EOTHER
+#define INTERPRET_LOAD_RESULT -ENOTSUP
 #else
 #define INTERPRET_LOAD_RESULT 0
 #endif
 
-// Load droppacket (JIT) without providing expected program type.
-DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
+static int32_t
+_get_expected_jit_result(int32_t expected_result)
+{
+#if defined(CONFIG_BPF_JIT_DISABLED)
+    UNREFERENCED_PARAMETER(expected_result);
+    return -ENOTSUP;
+#else
+    return expected_result;
+#endif
+}
 
-DECLARE_LOAD_TEST_CASE("droppacket.sys", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, 0);
+// Load test_sample_ebpf (JIT) without providing expected program type.
+DECLARE_LOAD_TEST_CASE("test_sample_ebpf.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
+
+DECLARE_LOAD_TEST_CASE("test_sample_ebpf.sys", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, 0);
 
 // Declare a duplicate test case. This will ensure that the earlier driver is actually unloaded,
 // else this test case will fail.
-DECLARE_DUPLICATE_LOAD_TEST_CASE("droppacket.sys", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, 2, 0);
+DECLARE_DUPLICATE_LOAD_TEST_CASE("test_sample_ebpf.sys", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_NATIVE, 2, 0);
 
-// Load droppacket (ANY) without providing expected program type.
-DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_ANY, 0);
+// Load test_sample_ebpf (ANY) without providing expected program type.
+DECLARE_LOAD_TEST_CASE("test_sample_ebpf.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_ANY, JIT_LOAD_RESULT);
 
-// Load droppacket (INTERPRET) without providing expected program type.
-DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
+// Load test_sample_ebpf (INTERPRET) without providing expected program type.
+DECLARE_LOAD_TEST_CASE("test_sample_ebpf.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
 
-// Load droppacket with providing expected program type.
-DECLARE_LOAD_TEST_CASE("droppacket.o", BPF_PROG_TYPE_XDP, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
+// Load test_sample_ebpf with providing expected program type.
+DECLARE_LOAD_TEST_CASE("test_sample_ebpf.o", BPF_PROG_TYPE_SAMPLE, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
 
 // Load bindmonitor (JIT) without providing expected program type.
 DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
@@ -309,37 +332,61 @@ DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_INT
 DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_BIND, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
 
 // Try to load bindmonitor with providing wrong program type.
-DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_XDP, EBPF_EXECUTION_ANY, -EACCES);
+DECLARE_LOAD_TEST_CASE("bindmonitor.o", BPF_PROG_TYPE_SAMPLE, EBPF_EXECUTION_ANY, _get_expected_jit_result(-EACCES));
 
 // Try to load an unsafe program.
-DECLARE_LOAD_TEST_CASE("droppacket_unsafe.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_ANY, -EACCES);
+DECLARE_LOAD_TEST_CASE("printk_unsafe.o", BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_ANY, _get_expected_jit_result(-EACCES));
 
 // Try to load multiple programs of different program types
 TEST_CASE("test_ebpf_multiple_programs_load_jit")
 {
     struct _ebpf_program_load_test_parameters test_parameters[] = {
-        {"droppacket.o", BPF_PROG_TYPE_XDP}, {"bindmonitor.o", BPF_PROG_TYPE_BIND}};
-    _test_multiple_programs_load(_countof(test_parameters), test_parameters, EBPF_EXECUTION_JIT, 0);
+        {"test_sample_ebpf.o", BPF_PROG_TYPE_SAMPLE}, {"bindmonitor.o", BPF_PROG_TYPE_BIND}};
+    _test_multiple_programs_load(_countof(test_parameters), test_parameters, EBPF_EXECUTION_JIT, JIT_LOAD_RESULT);
 }
 
 TEST_CASE("test_ebpf_multiple_programs_load_interpret")
 {
     struct _ebpf_program_load_test_parameters test_parameters[] = {
-        {"droppacket.o", BPF_PROG_TYPE_XDP}, {"bindmonitor.o", BPF_PROG_TYPE_BIND}};
+        {"test_sample_ebpf.o", BPF_PROG_TYPE_SAMPLE}, {"bindmonitor.o", BPF_PROG_TYPE_BIND}};
     _test_multiple_programs_load(
         _countof(test_parameters), test_parameters, EBPF_EXECUTION_INTERPRET, INTERPRET_LOAD_RESULT);
 }
 
-TEST_CASE("test_ebpf_program_next_previous", "[test_ebpf_program_next_previous]")
+#if !defined(CONFIG_BPF_JIT_DISABLED)
+TEST_CASE("test_ebpf_program_next_previous_jit", "[test_ebpf_program_next_previous]")
 {
-    _test_program_next_previous("droppacket.o", DROP_PACKET_PROGRAM_COUNT);
+    _test_program_next_previous("test_sample_ebpf.o", SAMPLE_PROGRAM_COUNT);
     _test_program_next_previous("bindmonitor.o", BIND_MONITOR_PROGRAM_COUNT);
 }
 
-TEST_CASE("test_ebpf_map_next_previous", "[test_ebpf_map_next_previous]")
+TEST_CASE("test_ebpf_map_next_previous_jit", "[test_ebpf_map_next_previous]")
 {
-    _test_map_next_previous("droppacket.o", DROP_PACKET_MAP_COUNT);
+    _test_map_next_previous("test_sample_ebpf.o", SAMPLE_MAP_COUNT);
     _test_map_next_previous("bindmonitor.o", BIND_MONITOR_MAP_COUNT);
+}
+#endif
+
+TEST_CASE("test_ebpf_program_next_previous_native", "[test_ebpf_program_next_previous]")
+{
+    native_module_helper_t test_sample_ebpf_helper;
+    test_sample_ebpf_helper.initialize("test_sample_ebpf", EBPF_EXECUTION_NATIVE);
+    _test_program_next_previous(test_sample_ebpf_helper.get_file_name().c_str(), SAMPLE_PROGRAM_COUNT);
+
+    native_module_helper_t bindmonitor_helper;
+    bindmonitor_helper.initialize("bindmonitor", EBPF_EXECUTION_NATIVE);
+    _test_program_next_previous(bindmonitor_helper.get_file_name().c_str(), BIND_MONITOR_PROGRAM_COUNT);
+}
+
+TEST_CASE("test_ebpf_map_next_previous_native", "[test_ebpf_map_next_previous]")
+{
+    native_module_helper_t test_sample_ebpf_helper;
+    test_sample_ebpf_helper.initialize("test_sample_ebpf", EBPF_EXECUTION_NATIVE);
+    _test_map_next_previous(test_sample_ebpf_helper.get_file_name().c_str(), SAMPLE_MAP_COUNT);
+
+    native_module_helper_t bindmonitor_helper;
+    bindmonitor_helper.initialize("bindmonitor", EBPF_EXECUTION_NATIVE);
+    _test_map_next_previous(bindmonitor_helper.get_file_name().c_str(), BIND_MONITOR_MAP_COUNT);
 }
 
 void
@@ -380,8 +427,8 @@ ring_buffer_api_test(ebpf_execution_type_t execution_type)
 {
     struct bpf_object* object = nullptr;
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
-    program_load_attach_helper_t _helper(
-        "bindmonitor_ringbuf.o", BPF_PROG_TYPE_BIND, "bind_monitor", execution_type, nullptr, 0, hook);
+    program_load_attach_helper_t _helper;
+    _helper.initialize("bindmonitor_ringbuf.o", BPF_PROG_TYPE_BIND, "bind_monitor", execution_type, nullptr, 0, hook);
     object = _helper.get_object();
 
     fd_t process_map_fd = bpf_object__find_map_fd_by_name(object, "process_map");
@@ -392,7 +439,11 @@ ring_buffer_api_test(ebpf_execution_type_t execution_type)
     std::vector<std::vector<char>> app_ids;
     char* p = reinterpret_cast<char*>(&app_id[0]);
     std::vector<char> temp(p, p + (app_id.size() + 1) * sizeof(wchar_t));
-    app_ids.push_back(temp);
+
+    // ring_buffer_api_test_helper expects a list of app IDs of size RING_BUFFER_TEST_EVENT_COUNT.
+    for (auto i = 0; i < RING_BUFFER_TEST_EVENT_COUNT; i++) {
+        app_ids.push_back(temp);
+    }
 
     ring_buffer_api_test_helper(process_map_fd, app_ids, [](int i) {
         const uint16_t _test_port = 12345 + static_cast<uint16_t>(i);
@@ -406,8 +457,8 @@ divide_by_zero_test_km(ebpf_execution_type_t execution_type)
 {
     struct bpf_object* object = nullptr;
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
-    program_load_attach_helper_t _helper(
-        "divide_by_zero.o", BPF_PROG_TYPE_BIND, "divide_by_zero", execution_type, nullptr, 0, hook);
+    program_load_attach_helper_t _helper;
+    _helper.initialize("divide_by_zero.o", BPF_PROG_TYPE_BIND, "divide_by_zero", execution_type, nullptr, 0, hook);
     object = _helper.get_object();
 
     perform_socket_bind(0, true);
@@ -493,13 +544,14 @@ _test_nested_maps(bpf_map_type type)
 TEST_CASE("array_map_of_maps", "[map_in_map]") { _test_nested_maps(BPF_MAP_TYPE_ARRAY_OF_MAPS); }
 TEST_CASE("hash_map_of_maps", "[map_in_map]") { _test_nested_maps(BPF_MAP_TYPE_HASH_OF_MAPS); }
 
-TEST_CASE("tailcall_load_test", "[tailcall_load_test]")
+void
+tailcall_load_test(_In_z_ const char* file_name)
 {
     int result;
     struct bpf_object* object = nullptr;
     fd_t program_fd;
 
-    result = _program_load_helper("tail_call_multiple.o", BPF_PROG_TYPE_XDP, EBPF_EXECUTION_ANY, &object, &program_fd);
+    result = _program_load_helper(file_name, BPF_PROG_TYPE_SAMPLE, EBPF_EXECUTION_ANY, &object, &program_fd);
     REQUIRE(result == 0);
 
     REQUIRE(program_fd > 0);
@@ -516,7 +568,7 @@ TEST_CASE("tailcall_load_test", "[tailcall_load_test]")
     REQUIRE(callee1_fd > 0);
 
     // Test a legacy libbpf api alias.
-    REQUIRE(bpf_program__get_type(callee0) == BPF_PROG_TYPE_XDP);
+    REQUIRE(bpf_program__get_type(callee0) == BPF_PROG_TYPE_SAMPLE);
 
     fd_t prog_map_fd = bpf_object__find_map_fd_by_name(object, "map");
     REQUIRE(prog_map_fd > 0);
@@ -534,6 +586,12 @@ TEST_CASE("tailcall_load_test", "[tailcall_load_test]")
 
     bpf_object__close(object);
 }
+
+#if !defined(CONFIG_BPF_JIT_DISABLED)
+TEST_CASE("tailcall_load_test_jit", "[tailcall_load_test]") { tailcall_load_test("tail_call_multiple.o"); }
+#endif
+
+TEST_CASE("tailcall_load_test_native", "[tailcall_load_test]") { tailcall_load_test("tail_call_multiple.sys"); }
 
 int
 perform_bind(_Out_ SOCKET* socket, uint16_t port_number)
@@ -582,8 +640,8 @@ TEST_CASE("bindmonitor_native_test", "[native_tests]")
 {
     struct bpf_object* object = nullptr;
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
-    program_load_attach_helper_t _helper(
-        "bindmonitor.sys", BPF_PROG_TYPE_BIND, "BindMonitor", EBPF_EXECUTION_NATIVE, nullptr, 0, hook);
+    program_load_attach_helper_t _helper;
+    _helper.initialize("bindmonitor.sys", BPF_PROG_TYPE_BIND, "BindMonitor", EBPF_EXECUTION_NATIVE, nullptr, 0, hook);
     object = _helper.get_object();
 
     bindmonitor_test(object);
@@ -593,7 +651,8 @@ TEST_CASE("bindmonitor_tailcall_native_test", "[native_tests]")
 {
     struct bpf_object* object = nullptr;
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
-    program_load_attach_helper_t _helper(
+    program_load_attach_helper_t _helper;
+    _helper.initialize(
         "bindmonitor_tailcall.sys", BPF_PROG_TYPE_BIND, "BindMonitor", EBPF_EXECUTION_NATIVE, nullptr, 0, hook);
     object = _helper.get_object();
 
@@ -627,28 +686,83 @@ TEST_CASE("bindmonitor_tailcall_native_test", "[native_tests]")
 
     // Test map-in-maps.
     struct bpf_map* outer_map = bpf_object__find_map_by_name(object, "dummy_outer_map");
-    if (outer_map == nullptr)
+    if (outer_map == nullptr) {
         cleanup();
+    }
     REQUIRE(outer_map != nullptr);
 
     int outer_map_fd = bpf_map__fd(outer_map);
-    if (outer_map_fd <= 0)
+    if (outer_map_fd <= 0) {
         cleanup();
+    }
     REQUIRE(outer_map_fd > 0);
 
     // Test map-in-maps.
     struct bpf_map* outer_idx_map = bpf_object__find_map_by_name(object, "dummy_outer_idx_map");
-    if (outer_idx_map == nullptr)
+    if (outer_idx_map == nullptr) {
         cleanup();
+    }
     REQUIRE(outer_idx_map != nullptr);
 
     int outer_idx_map_fd = bpf_map__fd(outer_idx_map);
-    if (outer_idx_map_fd <= 0)
+    if (outer_idx_map_fd <= 0) {
         cleanup();
+    }
     REQUIRE(outer_idx_map_fd > 0);
 
     // Clean up tail calls.
     cleanup();
+}
+
+void
+bind_tailcall_test(_In_ struct bpf_object* object)
+{
+    UNREFERENCED_PARAMETER(object);
+    WSAData data;
+    SOCKET sockets[2];
+    REQUIRE(WSAStartup(2, &data) == 0);
+
+    // Now, trigger bind. bind should not succeed.
+    REQUIRE(perform_bind(&sockets[0], 30000) != 0);
+    REQUIRE(perform_bind(&sockets[1], 30001) != 0);
+
+    WSACleanup();
+}
+
+#define MAX_TAIL_CALL_PROGS MAX_TAIL_CALL_CNT + 2
+
+TEST_CASE("bind_tailcall_max_native_test", "[native_tests]")
+{
+    struct bpf_object* object = nullptr;
+    hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
+
+    program_load_attach_helper_t _helper;
+    _helper.initialize(
+        "tail_call_max_exceed.sys", BPF_PROG_TYPE_BIND, "bind_test_caller", EBPF_EXECUTION_NATIVE, nullptr, 0, hook);
+    object = _helper.get_object();
+
+    fd_t prog_map_fd = bpf_object__find_map_fd_by_name(object, "bind_tail_call_map");
+    REQUIRE(prog_map_fd > 0);
+
+    struct bpf_program* caller = bpf_object__find_program_by_name(object, "bind_test_caller");
+    REQUIRE(caller != nullptr);
+
+    // Check each tail call program in the map.
+    for (int i = 0; i < MAX_TAIL_CALL_PROGS; i++) {
+        std::string program_name{"bind_test_callee"};
+        program_name += std::to_string(i);
+
+        struct bpf_program* program = bpf_object__find_program_by_name(object, program_name.c_str());
+        REQUIRE(program != nullptr);
+    }
+
+    // Perform bind test.
+    bind_tailcall_test(object);
+
+    // Clean up tail calls.
+    for (int index = 0; index < MAX_TAIL_CALL_PROGS; index++) {
+        REQUIRE(bpf_map_update_elem(prog_map_fd, &index, &ebpf_fd_invalid, 0) == 0);
+    }
 }
 
 #define SOCKET_TEST_PORT 0x3bbf
@@ -659,7 +773,8 @@ TEST_CASE("bpf_get_current_pid_tgid", "[helpers]")
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
     uint32_t ifindex = 0;
     const char* program_name = "func";
-    program_load_attach_helper_t _helper(
+    program_load_attach_helper_t _helper;
+    _helper.initialize(
         "pidtgid.sys", BPF_PROG_TYPE_BIND, program_name, EBPF_EXECUTION_NATIVE, &ifindex, sizeof(ifindex), hook);
     struct bpf_object* object = _helper.get_object();
 
@@ -751,8 +866,8 @@ TEST_CASE("nomap_load_test", "[native_tests]")
     // This test case tests loading of native ebpf programs that do not contain/refer-to any map.
     // This test should succeed as this is a valid use case.
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
-    program_load_attach_helper_t _helper(
-        "printk.sys", BPF_PROG_TYPE_BIND, "func", EBPF_EXECUTION_NATIVE, nullptr, 0, hook);
+    program_load_attach_helper_t _helper;
+    _helper.initialize("printk.sys", BPF_PROG_TYPE_BIND, "func", EBPF_EXECUTION_NATIVE, nullptr, 0, hook);
     auto object = _helper.get_object();
     REQUIRE(object != nullptr);
 }
@@ -767,9 +882,11 @@ bpf_user_helpers_test(ebpf_execution_type_t execution_type)
     struct bpf_object* object = nullptr;
     uint64_t process_thread_id = get_current_pid_tgid();
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
-    const char* file_name = (execution_type == EBPF_EXECUTION_NATIVE) ? "bindmonitor.sys" : "bindmonitor.o";
-    program_load_attach_helper_t _helper(
-        file_name, BPF_PROG_TYPE_BIND, "BindMonitor", execution_type, nullptr, 0, hook);
+    native_module_helper_t module_helper;
+    module_helper.initialize("bindmonitor", execution_type);
+    program_load_attach_helper_t _helper;
+    _helper.initialize(
+        module_helper.get_file_name().c_str(), BPF_PROG_TYPE_BIND, "BindMonitor", execution_type, nullptr, 0, hook);
     object = _helper.get_object();
 
     perform_socket_bind(0, true);
@@ -792,7 +909,9 @@ bpf_user_helpers_test(ebpf_execution_type_t execution_type)
     LsaFreeReturnBuffer(data);
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED)
 TEST_CASE("bpf_user_helpers_test_jit", "[api_test]") { bpf_user_helpers_test(EBPF_EXECUTION_JIT); }
+#endif
 TEST_CASE("bpf_user_helpers_test_native", "[api_test]") { bpf_user_helpers_test(EBPF_EXECUTION_NATIVE); }
 
 // This test tests resource reclamation and clean-up after a premature/abnormal user mode application exit.
@@ -800,7 +919,8 @@ TEST_CASE("close_unload_test", "[native_tests][native_close_cleanup_tests]")
 {
     struct bpf_object* object = nullptr;
     hook_helper_t hook(EBPF_ATTACH_TYPE_BIND);
-    program_load_attach_helper_t _helper(
+    program_load_attach_helper_t _helper;
+    _helper.initialize(
         "bindmonitor_tailcall.sys", BPF_PROG_TYPE_BIND, "BindMonitor", EBPF_EXECUTION_NATIVE, nullptr, 0, hook);
     object = _helper.get_object();
 
@@ -850,7 +970,7 @@ TEST_CASE("close_unload_test", "[native_tests][native_close_cleanup_tests]")
     // The success/failure of the [native_close_cleanup_tests] tests can only be (indirectly) checked by attempting to
     // stop the ebpf-core driver after executing this class of tests.  If the clean-up by the ebpf-core driver is not
     // successful, it cannot be stopped/unloaded.  This step is performed automatically by the CI/CD test pass runs and
-    // will need to be perfomed as an explicit manual step after a manually initiated test-run.
+    // will need to be performed as an explicit manual step after a manually initiated test-run.
     //
     // On a final note, each test in the [native_close_cleanup_tests] set _must_ load a .sys driver (if it needs one)
     // that either has not been loaded yet, or was loaded but has since been unloaded (before start of the test). Given
@@ -885,4 +1005,312 @@ TEST_CASE("close_unload_test", "[native_tests][native_close_cleanup_tests]")
     // Free the program as well.
     bpf_object__close(object);
     */
+}
+
+void
+test_sock_addr_native_program_load_attach(const char* file_name)
+{
+    int result;
+    struct bpf_object* object = nullptr;
+    fd_t program_fd;
+    uint32_t old_id = 0;
+    uint32_t next_id;
+    std::string file_name_string = std::string("regression\\") + std::string(file_name);
+    const char* file_name_with_path = file_name_string.c_str();
+
+    result = _program_load_helper(file_name_with_path, BPF_PROG_TYPE_UNSPEC, EBPF_EXECUTION_ANY, &object, &program_fd);
+    REQUIRE(result == 0);
+
+    bpf_program* v4_program = bpf_object__find_program_by_name(object, "connect_redirect4");
+    REQUIRE(v4_program != nullptr);
+
+    bpf_program* v6_program = bpf_object__find_program_by_name(object, "connect_redirect6");
+    REQUIRE(v6_program != nullptr);
+
+    // Get program ids for both v4 and v6 programs.
+    struct bpf_prog_info prog_info_v4 = {0};
+    uint32_t info_len = sizeof(prog_info_v4);
+    result = bpf_obj_get_info_by_fd(bpf_program__fd(v4_program), &prog_info_v4, &info_len);
+    REQUIRE(result == 0);
+    REQUIRE(prog_info_v4.id != 0);
+
+    struct bpf_prog_info prog_info_v6 = {0};
+    info_len = sizeof(prog_info_v6);
+    result = bpf_obj_get_info_by_fd(bpf_program__fd(v6_program), &prog_info_v6, &info_len);
+    REQUIRE(result == 0);
+    REQUIRE(prog_info_v6.id != 0);
+
+    // Attach both v4 and v6 programs.
+    bpf_link* v4_link = bpf_program__attach(v4_program);
+    REQUIRE(v4_link != nullptr);
+
+    bpf_link* v6_link = bpf_program__attach(v6_program);
+    REQUIRE(v6_link != nullptr);
+
+    // Detach both v4 and v6 programs.
+    result = bpf_link__destroy(v4_link);
+    REQUIRE(result == 0);
+
+    result = bpf_link__destroy(v6_link);
+    REQUIRE(result == 0);
+
+    bpf_object__close(object);
+
+    // We have closed handles to the programs. Program should be unloaded now.
+    // Since for prog array maps, the program IDs are cleaned up asynchronously,
+    // it is possible we sometimes find some _other_ program IDs. To work around
+    // this, validate that at least the program IDs of interest are not found.
+    while (true) {
+        result = bpf_prog_get_next_id(old_id, &next_id);
+        if (result == -ENOENT) {
+            break;
+        }
+
+        REQUIRE(((result == 0) && (next_id != prog_info_v4.id) && (next_id != prog_info_v6.id)));
+        old_id = next_id;
+    }
+}
+
+#define DECLARE_REGRESSION_TEST_CASE(version)                                                         \
+    TEST_CASE("test_native_program_load_attach-regression-" #version, "[regression_tests]")           \
+    {                                                                                                 \
+        test_sock_addr_native_program_load_attach((const char*)"cgroup_sock_addr2_"##version ".sys"); \
+    }
+
+DECLARE_REGRESSION_TEST_CASE("0.11.0")
+
+// The below tests try to load native drivers for invalid programs (that will fail verification).
+// Since verification can be skipped in bpf2c for only Debug builds, these tests are applicable
+// only for Debug build.
+#ifdef _DEBUG
+
+static void
+_load_invalid_program(_In_z_ const char* file_name, ebpf_execution_type_t execution_type, int expected_result)
+{
+    int result;
+    bpf_object* object = nullptr;
+    fd_t program_fd;
+    uint32_t next_id;
+
+    result = _program_load_helper(file_name, BPF_PROG_TYPE_UNSPEC, execution_type, &object, &program_fd);
+    REQUIRE(result == expected_result);
+
+    if (result != 0) {
+        // If load failed, no programs or maps should be loaded.
+        REQUIRE(bpf_map_get_next_id(0, &next_id) == -ENOENT);
+        REQUIRE(bpf_prog_get_next_id(0, &next_id) == -ENOENT);
+    }
+}
+
+TEST_CASE("load_native_program_invalid1", "[native][negative]")
+{
+    _load_invalid_program("invalid_maps1.sys", EBPF_EXECUTION_NATIVE, -EINVAL);
+}
+TEST_CASE("load_native_program_invalid2", "[native][negative]")
+{
+    _load_invalid_program("invalid_maps2.sys", EBPF_EXECUTION_NATIVE, -EINVAL);
+}
+TEST_CASE("load_native_program_invalid3", "[native][negative]")
+{
+    _load_invalid_program("invalid_helpers.sys", EBPF_EXECUTION_NATIVE, -EINVAL);
+}
+TEST_CASE("load_native_program_invalid4", "[native][negative]")
+{
+    _load_invalid_program("empty.sys", EBPF_EXECUTION_NATIVE, -EINVAL);
+}
+TEST_CASE("load_native_program_invalid5", "[native][negative]")
+{
+    _load_invalid_program("invalid_maps3.sys", EBPF_EXECUTION_NATIVE, -EINVAL);
+}
+#endif // _DEBUG
+
+TEST_CASE("ioctl_stress", "[stress]")
+{
+    // Load bindmonitor_ringbuf.sys
+
+    struct bpf_object* object = nullptr;
+    fd_t program_fd;
+
+    REQUIRE(
+        _program_load_helper(
+            "bindmonitor_ringbuf.sys", BPF_PROG_TYPE_BIND, EBPF_EXECUTION_NATIVE, &object, &program_fd) == 0);
+
+    // Create a test array map to provide target for the ioctl stress test.
+    fd_t test_map_fd = bpf_map_create(BPF_MAP_TYPE_ARRAY, "test_map", sizeof(uint32_t), sizeof(uint32_t), 1, nullptr);
+
+    // Get fd of process_map map
+    fd_t process_map_fd = bpf_object__find_map_fd_by_name(object, "process_map");
+
+    // Subscribe to the ring buffer with empty callback
+    auto ring = ring_buffer__new(
+        process_map_fd, [](void*, void*, size_t) { return 0; }, nullptr, nullptr);
+
+    // Run 4 threads per cpu
+    // Get cpu count
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+
+    std::atomic<size_t> failure_count = 0;
+    std::vector<std::jthread> threads;
+    std::atomic<bool> stop_requested;
+    for (DWORD i = 0; i < sysinfo.dwNumberOfProcessors; i++) {
+        for (int j = 0; j < 4; j++) {
+            threads.emplace_back([&]() {
+                while (!stop_requested) {
+                    int test_case = rand() % 4;
+                    uint32_t key = 0;
+                    uint32_t value;
+                    bpf_test_run_opts opts = {};
+                    bind_md_t ctx = {};
+                    int result;
+                    switch (test_case) {
+                    case 0:
+                        // Test bpf_map_lookup_elem
+                        result = bpf_map_lookup_elem(test_map_fd, &key, &value);
+                        if (result != 0) {
+                            std::cout << "bpf_map_lookup_elem failed with " << result << std::endl;
+                            failure_count++;
+                        }
+                        break;
+                    case 1:
+                        // Test bpf_map_update_elem
+                        result = bpf_map_update_elem(test_map_fd, &key, &value, 0);
+                        if (result != 0) {
+                            std::cout << "bpf_map_update_elem failed with " << result << std::endl;
+                            failure_count++;
+                        }
+                        break;
+                    case 2:
+                        // Test bpf_map_delete_elem
+                        result = bpf_map_delete_elem(test_map_fd, &key);
+                        if (result != 0) {
+                            std::cout << "bpf_map_delete_elem failed with " << result << std::endl;
+                            failure_count++;
+                        }
+                        break;
+                    case 3:
+                        // Run the program to trigger a ring buffer event
+                        std::string app_id = "api_test.exe";
+
+                        opts.ctx_in = &ctx;
+                        opts.ctx_size_in = sizeof(ctx);
+                        opts.ctx_out = &ctx;
+                        opts.ctx_size_out = sizeof(ctx);
+                        opts.data_in = app_id.data();
+                        opts.data_size_in = static_cast<uint32_t>(app_id.size());
+                        opts.data_out = app_id.data();
+                        opts.data_size_out = static_cast<uint32_t>(app_id.size());
+
+                        result = bpf_prog_test_run_opts(program_fd, &opts);
+                        if (result != 0) {
+                            std::cout << "bpf_prog_test_run_opts failed with " << result << std::endl;
+                            failure_count++;
+                        }
+                        break;
+                    }
+                };
+            });
+        }
+    }
+
+    // Wait for 60 seconds
+    std::this_thread::sleep_for(std::chrono::seconds(60));
+
+    stop_requested = true;
+
+    for (auto& t : threads) {
+        t.join();
+    }
+    REQUIRE(failure_count == 0);
+
+    // Unsubscribe from the ring buffer
+    ring_buffer__free(ring);
+
+    // Clean up
+    bpf_object__close(object);
+}
+
+typedef struct _ring_buffer_test_context
+{
+    uint32_t event_count = 0;
+    uint32_t expected_event_count = 0;
+    std::promise<void> promise;
+} ring_buffer_test_context_t;
+
+TEST_CASE("test_ringbuffer_wraparound", "[stress]")
+{
+    // Load bindmonitor_ringbuf.sys.
+    struct bpf_object* object = nullptr;
+    fd_t program_fd;
+    ring_buffer_test_context_t context;
+    std::string app_id = "api_test.exe";
+    uint32_t thread_count = 2;
+    native_module_helper_t native_helper;
+    native_helper.initialize("bindmonitor_ringbuf", EBPF_EXECUTION_NATIVE);
+
+    REQUIRE(
+        _program_load_helper(
+            native_helper.get_file_name().c_str(), BPF_PROG_TYPE_BIND, EBPF_EXECUTION_NATIVE, &object, &program_fd) ==
+        0);
+
+    // Get fd of process_map map.
+    fd_t process_map_fd = bpf_object__find_map_fd_by_name(object, "process_map");
+
+    uint32_t max_entries = bpf_map__max_entries(bpf_object__find_map_by_name(object, "process_map"));
+    uint32_t max_iterations = static_cast<uint32_t>(10 * (max_entries / app_id.size()));
+    printf("max_iterations: %d\n", max_iterations);
+    REQUIRE(max_iterations % thread_count == 0);
+    uint32_t iterations_per_thread = max_iterations / thread_count;
+
+    // Initialize context.
+    context.event_count = 0;
+    context.expected_event_count = max_iterations;
+    auto ring_buffer_event_callback = context.promise.get_future();
+    // Subscribe to the ring buffer.
+    auto ring = ring_buffer__new(
+        process_map_fd,
+        [](void* ctx, void*, size_t) {
+            ring_buffer_test_context_t* context = reinterpret_cast<ring_buffer_test_context_t*>(ctx);
+            if (++context->event_count == context->expected_event_count) {
+                context->promise.set_value();
+            }
+            return 0;
+        },
+        &context,
+        nullptr);
+
+    // Create 2 threads that invoke the program to trigger ring buffer events.
+    std::vector<std::jthread> threads;
+    for (uint32_t i = 0; i < thread_count; i++) {
+        threads.emplace_back([&]() {
+            bind_md_t ctx = {};
+            bpf_test_run_opts opts = {};
+            opts.ctx_in = &ctx;
+            opts.ctx_size_in = sizeof(ctx);
+            opts.ctx_out = &ctx;
+            opts.ctx_size_out = sizeof(ctx);
+            opts.data_in = app_id.data();
+            opts.data_size_in = static_cast<uint32_t>(app_id.size());
+            opts.data_out = app_id.data();
+            opts.data_size_out = static_cast<uint32_t>(app_id.size());
+
+            for (uint32_t i = 0; i < iterations_per_thread; i++) {
+                int result = bpf_prog_test_run_opts(program_fd, &opts);
+                REQUIRE(result == 0);
+            }
+        });
+    }
+
+    // Wait for threads to complete.
+    for (auto& t : threads) {
+        t.join();
+    }
+    // Wait for 1 second for the ring buffer to receive all events.
+    REQUIRE(ring_buffer_event_callback.wait_for(1s) == std::future_status::ready);
+
+    // Unsubscribe from the ring buffer.
+    ring_buffer__free(ring);
+
+    // Clean up.
+    bpf_object__close(object);
 }

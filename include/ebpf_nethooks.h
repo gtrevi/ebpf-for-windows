@@ -6,8 +6,8 @@
 // This file contains APIs for hooks and helpers that are
 // exposed by netebpfext.sys for use by eBPF programs.
 
-// XDP hook.  We use "struct xdp_md" for cross-platform compatibility.
-typedef struct xdp_md
+// XDP_TEST hook.  We use "struct xdp_md" for cross-platform compatibility.
+typedef struct xdp_md_
 {
     void* data;               ///< Pointer to start of packet data.
     void* data_end;           ///< Pointer to end of packet data.
@@ -28,7 +28,7 @@ typedef enum _xdp_action
 /**
  * @brief Handle an incoming packet as early as possible.
  *
- * Program type: \ref EBPF_PROGRAM_TYPE_XDP
+ * Program type: \ref EBPF_PROGRAM_TYPE_XDP_TEST
  *
  * @param[in] context Packet metadata.
  * @retval XDP_PASS Allow the packet to pass.
@@ -38,7 +38,7 @@ typedef enum _xdp_action
 typedef xdp_action_t
 xdp_hook_t(xdp_md_t* context);
 
-// XDP helper functions.
+// XDP_TEST helper functions.
 #define XDP_EXT_HELPER_FN_BASE 0xFFFF
 
 #ifndef __doxygen
@@ -51,9 +51,9 @@ typedef enum
 } ebpf_nethook_helper_id_t;
 
 /**
- * @brief Adjust XDP context data pointer.
+ * @brief Adjust XDP_TEST context data pointer.
  *
- * @param[in] ctx XDP context.
+ * @param[in] ctx XDP_TEST context.
  * @param[in] delta Number of bytes to move the data pointer by.
  *
  * @retval 0 The operation was successful.
@@ -156,6 +156,7 @@ typedef struct bpf_sock_addr
 typedef enum
 {
     BPF_FUNC_sock_addr_get_current_pid_tgid = SOCK_ADDR_EXT_HELPER_FN_BASE + 1,
+    BPF_FUNC_sock_addr_set_redirect_context = SOCK_ADDR_EXT_HELPER_FN_BASE + 2,
 } ebpf_sock_addr_helper_id_t;
 
 /**
@@ -173,6 +174,23 @@ EBPF_HELPER(uint64_t, bpf_sock_addr_get_current_pid_tgid, (bpf_sock_addr_t * ctx
 #ifndef __doxygen
 #define bpf_sock_addr_get_current_pid_tgid \
     ((bpf_sock_addr_get_current_pid_tgid_t)BPF_FUNC_sock_addr_get_current_pid_tgid)
+#endif
+
+/**
+ * @brief Set a context for consumption by a user-mode application (sock_addr specific only).
+ * This function is not supported for the recv_accept hooks.
+ *
+ * @param[in] ctx Pointer to bpf_sock_addr_t context.
+ * @param[in] data Pointer to data to store.
+ * @param[in] data_size The size of the data to store.
+ *
+ * @retval 0 The operation was successful.
+ * @retval <0 A failure occurred.
+ */
+EBPF_HELPER(int, bpf_sock_addr_set_redirect_context, (bpf_sock_addr_t * ctx, void* data, uint32_t data_size));
+#ifndef __doxygen
+#define bpf_sock_addr_set_redirect_context \
+    ((bpf_sock_addr_set_redirect_context_t)BPF_FUNC_sock_addr_set_redirect_context)
 #endif
 
 /**

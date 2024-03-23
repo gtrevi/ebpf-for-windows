@@ -4,7 +4,11 @@
 #pragma once
 
 #include "ebpf_api.h"
+#include "ebpf_tracelog.h"
 #include "platform.h"
+#define FALSE 0
+#define TRUE 1
+#include <winioctl.h>
 
 // Device type
 #define EBPF_IOCTL_TYPE FILE_DEVICE_NETWORK
@@ -25,13 +29,22 @@ typedef struct empty_reply
 static empty_reply_t _empty_reply;
 
 _Must_inspect_result_ ebpf_result_t
-initialize_device_handle();
+initialize_sync_device_handle();
+
+_Must_inspect_result_ ebpf_result_t
+initialize_async_device_handle();
 
 void
-clean_up_device_handle();
+clean_up_sync_device_handle();
+
+void
+clean_up_async_device_handle();
 
 ebpf_handle_t
-get_device_handle();
+get_sync_device_handle();
+
+ebpf_handle_t
+get_async_device_handle();
 
 typedef ebpf_result_t (*async_ioctl_completion_callback_t)(_Inout_opt_ void* completion_context);
 
@@ -97,7 +110,7 @@ invoke_ioctl(request_t& request, reply_t& reply = _empty_reply, _Inout_opt_ OVER
     }
 
     auto success = Platform::DeviceIoControl(
-        get_device_handle(),
+        overlapped ? get_async_device_handle() : get_sync_device_handle(),
         IOCTL_EBPF_CTL_METHOD_BUFFERED,
         request_ptr,
         request_size,
@@ -108,6 +121,7 @@ invoke_ioctl(request_t& request, reply_t& reply = _empty_reply, _Inout_opt_ OVER
 
     if (!success) {
         return_value = GetLastError();
+        EBPF_LOG_WIN32_API_FAILURE(EBPF_TRACELOG_KEYWORD_API, DeviceIoControl);
         goto Exit;
     }
 
@@ -117,5 +131,5 @@ invoke_ioctl(request_t& request, reply_t& reply = _empty_reply, _Inout_opt_ OVER
     }
 
 Exit:
-    return return_value;
+    EBPF_RETURN_ERROR(return_value);
 }

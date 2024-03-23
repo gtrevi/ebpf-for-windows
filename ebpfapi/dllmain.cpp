@@ -6,7 +6,6 @@
  * @brief Defines the entry point for the DLL application.
  */
 #include "api_internal.h"
-#include "framework.h"
 
 bool use_ebpf_store = true;
 
@@ -22,8 +21,10 @@ DllMain(HMODULE hModule, unsigned long ul_reason_for_call, void* lpReserved)
         }
         break;
     case DLL_THREAD_ATTACH:
+        ebpf_api_thread_local_initialize();
         break;
     case DLL_THREAD_DETACH:
+        ebpf_api_thread_local_cleanup();
         break;
     case DLL_PROCESS_DETACH:
         ebpf_api_terminate();

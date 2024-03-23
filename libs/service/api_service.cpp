@@ -4,8 +4,8 @@
 #include "api_common.hpp"
 #include "api_service.h"
 #include "device_helper.hpp"
-#include "ebpf_platform.h"
 #include "ebpf_protocol.h"
+#include "ebpf_shared_framework.h"
 #include "map_descriptors.hpp"
 #include "platform.h"
 extern "C"
@@ -22,41 +22,34 @@ extern "C"
 // Maximum size of JIT'ed native code.
 #define MAX_NATIVE_CODE_SIZE_IN_BYTES (32 * 1024) // 32 KB
 
+// TODO(Issue #345 (ubpf)): uBPF has a max number of helper functions hard coded,
+// but doesn't expose the define to callers, so we define it here.
+#define UBPF_MAX_EXT_FUNCS 64
+
 static ebpf_result_t
-_build_helper_id_to_address_map(
+_resolve_helper_functions(
     ebpf_handle_t program_handle,
     _In_reads_(instruction_count) ebpf_inst* instructions,
     uint32_t instruction_count,
-    std::vector<uint64_t>& helper_addresses,
-    uint32_t& unwind_index)
+    std::map<uint32_t, uint64_t>& helper_id_to_address)
 {
     // Note:
     // eBPF supports helper IDs in the range [1, MAXUINT32]
     // uBPF jitter only supports helper IDs in the range [0,63]
     // Build a table to map [1, MAXUINT32] -> [0,63]
-    std::map<uint32_t, uint32_t> helper_id_mapping;
-    unwind_index = MAXUINT32;
-
     for (size_t index = 0; index < instruction_count; index++) {
         ebpf_inst& instruction = instructions[index];
         if (instruction.opcode != INST_OP_CALL) {
             continue;
         }
-        helper_id_mapping[instruction.imm] = 0;
+        helper_id_to_address[instruction.imm] = 0;
     }
 
-    if (helper_id_mapping.size() == 0)
-        return EBPF_SUCCESS;
-
-    // uBPF jitter supports a maximum of 64 helper functions
-    if (helper_id_mapping.size() > 64)
-        return EBPF_OPERATION_NOT_SUPPORTED;
-
     ebpf_protocol_buffer_t request_buffer(
-        offsetof(ebpf_operation_resolve_helper_request_t, helper_id) + sizeof(uint32_t) * helper_id_mapping.size());
+        offsetof(ebpf_operation_resolve_helper_request_t, helper_id) + sizeof(uint32_t) * helper_id_to_address.size());
 
     ebpf_protocol_buffer_t reply_buffer(
-        offsetof(ebpf_operation_resolve_helper_reply_t, address) + sizeof(uint64_t) * helper_id_mapping.size());
+        offsetof(ebpf_operation_resolve_helper_reply_t, address) + sizeof(uint64_t) * helper_id_to_address.size());
 
     auto request = reinterpret_cast<ebpf_operation_resolve_helper_request_t*>(request_buffer.data());
     auto reply = reinterpret_cast<ebpf_operation_resolve_helper_reply_t*>(reply_buffer.data());
@@ -64,12 +57,9 @@ _build_helper_id_to_address_map(
     request->header.length = static_cast<uint16_t>(request_buffer.size());
     request->program_handle = program_handle;
 
-    // Build list of helper_ids to resolve and assign new helper id.
-    // New helper ids are in the range [0,63]
     uint32_t index = 0;
-    for (auto& [old_helper_id, new_helper_id] : helper_id_mapping) {
-        request->helper_id[index] = old_helper_id;
-        new_helper_id = index;
+    for (auto& [helper_id, address] : helper_id_to_address) {
+        request->helper_id[index] = helper_id;
         index++;
     }
 
@@ -78,11 +68,40 @@ _build_helper_id_to_address_map(
         return win32_error_code_to_ebpf_result(result);
     }
 
-    helper_addresses.resize(helper_id_mapping.size());
-
     index = 0;
-    for (auto& address : helper_addresses) {
-        address = reply->address[index++];
+    for (auto& [helper_id, helper_address] : helper_id_to_address) {
+        helper_address = reply->address[index++];
+    }
+
+    return EBPF_SUCCESS;
+}
+
+static ebpf_result_t
+_build_helper_id_to_address_map(
+    _In_reads_(instruction_count) ebpf_inst* instructions,
+    uint32_t instruction_count,
+    const std::map<uint32_t, uint64_t>& helper_id_to_address,
+    uint32_t& unwind_index)
+{
+    // Note:
+    // eBPF supports helper IDs in the range [1, MAXUINT32].
+    // uBPF jitter only supports helper IDs in the range [0,63].
+    // Build a table to map [1, MAXUINT32] -> [0,63].
+    std::map<uint32_t, uint32_t> helper_id_mapping;
+    unwind_index = MAXUINT32;
+
+    if (helper_id_to_address.size() == 0) {
+        return EBPF_SUCCESS;
+    }
+
+    // The uBPF JIT compiler supports a maximum of UBPF_MAX_EXT_FUNCS helper functions.
+    if (helper_id_to_address.size() > UBPF_MAX_EXT_FUNCS) {
+        return EBPF_OPERATION_NOT_SUPPORTED;
+    }
+
+    uint32_t index = 0;
+    for (auto [helper_id, helper_address] : helper_id_to_address) {
+        helper_id_mapping[helper_id] = index++;
     }
 
     // Replace old helper_ids in range [1, MAXUINT32] with new helper ids in range [0,63]
@@ -94,8 +113,10 @@ _build_helper_id_to_address_map(
         instruction.imm = helper_id_mapping[instruction.imm];
     }
     for (auto& [old_helper_id, new_helper_id] : helper_id_mapping) {
-        if (get_helper_prototype_windows(old_helper_id).return_type != EBPF_RETURN_TYPE_INTEGER_OR_NO_RETURN_IF_SUCCEED)
+        if (get_helper_prototype_windows(old_helper_id).return_type !=
+            EBPF_RETURN_TYPE_INTEGER_OR_NO_RETURN_IF_SUCCEED) {
             continue;
+        }
         unwind_index = new_helper_id;
         break;
     }
@@ -203,9 +224,11 @@ _query_and_cache_map_descriptors(
     if (handle_map_count > 0) {
         for (uint32_t i = 0; i < handle_map_count; i++) {
             descriptor = {0};
+            ebpf_id_t id;
             ebpf_id_t inner_map_id;
             result = query_map_definition(
                 reinterpret_cast<ebpf_handle_t>(handle_map[i].handle),
+                &id,
                 &descriptor.type,
                 &descriptor.key_size,
                 &descriptor.value_size,
@@ -217,11 +240,13 @@ _query_and_cache_map_descriptors(
 
             cache_map_original_file_descriptor_with_handle(
                 handle_map[i].original_fd,
+                handle_map[i].id,
                 descriptor.type,
                 descriptor.key_size,
                 descriptor.value_size,
                 descriptor.max_entries,
                 handle_map[i].inner_map_original_fd,
+                handle_map[i].inner_id,
                 reinterpret_cast<ebpf_handle_t>(handle_map[i].handle),
                 0);
         }
@@ -274,6 +299,12 @@ ebpf_verify_and_load_program(
             goto Exit;
         }
 
+        std::map<uint32_t, uint64_t> helper_id_to_address;
+        result = _resolve_helper_functions(program_handle, instructions, instruction_count, helper_id_to_address);
+        if (result != EBPF_SUCCESS) {
+            goto Exit;
+        }
+
         // Verify the program.
         set_verification_in_progress(true);
         result = verify_byte_code(program_type, instructions, instruction_count, error_message, error_message_size);
@@ -291,12 +322,16 @@ ebpf_verify_and_load_program(
             goto Exit;
         }
 
-        std::vector<uint64_t> helper_id_address;
         uint32_t unwind_index;
-        result = _build_helper_id_to_address_map(
-            program_handle, instructions, instruction_count, helper_id_address, unwind_index);
-        if (result != EBPF_SUCCESS)
+        result = _build_helper_id_to_address_map(instructions, instruction_count, helper_id_to_address, unwind_index);
+        if (result != EBPF_SUCCESS) {
             goto Exit;
+        }
+
+        std::vector<uint64_t> helper_id_address;
+        for (auto& [helper_id, address] : helper_id_to_address) {
+            helper_id_address.push_back(address);
+        }
 
         ebpf_code_buffer_t machine_code(MAX_NATIVE_CODE_SIZE_IN_BYTES);
         uint8_t* byte_code_data = (uint8_t*)instructions;
@@ -319,8 +354,9 @@ ebpf_verify_and_load_program(
                 }
             }
 
-            if (unwind_index != MAXUINT32)
+            if (unwind_index != MAXUINT32) {
                 ubpf_set_unwind_function_index(vm, unwind_index);
+            }
 
             ubpf_set_error_print(
                 vm, reinterpret_cast<int (*)(FILE * stream, const char* format, ...)>(log_function_address));
@@ -385,7 +421,7 @@ ebpf_service_initialize() noexcept
     // it will be re-attempted before an IOCTL call is made.
     // This is needed to ensure the service can successfully start
     // even if the driver is not installed.
-    (void)initialize_device_handle();
+    (void)initialize_async_device_handle();
 
     return ERROR_SUCCESS;
 }
@@ -393,5 +429,5 @@ ebpf_service_initialize() noexcept
 void
 ebpf_service_cleanup() noexcept
 {
-    clean_up_device_handle();
+    clean_up_async_device_handle();
 }

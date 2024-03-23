@@ -6,7 +6,14 @@
 #include "ebpf_result.h"
 
 #include <guiddef.h>
+#if !defined(NO_CRT) && !defined(_NO_CRT_STDIO_INLINE)
 #include <stdint.h>
+#else
+typedef unsigned char uint8_t;
+typedef unsigned int uint32_t;
+typedef unsigned long long uint64_t;
+typedef unsigned short wchar_t;
+#endif
 
 #define EBPF_MAX_PROGRAM_DESCRIPTOR_NAME_LENGTH 256
 #define EBPF_MAX_HELPER_FUNCTION_NAME_LENGTH 256
@@ -14,7 +21,7 @@
 typedef struct _ebpf_program_type_descriptor
 {
     const char* name;
-    ebpf_context_descriptor_t* context_descriptor;
+    const ebpf_context_descriptor_t* context_descriptor;
     GUID program_type;
     uint32_t bpf_prog_type;
     char is_privileged;
@@ -32,9 +39,9 @@ typedef struct _ebpf_program_info
 {
     ebpf_program_type_descriptor_t program_type_descriptor;
     uint32_t count_of_program_type_specific_helpers;
-    ebpf_helper_function_prototype_t* program_type_specific_helper_prototype;
+    const ebpf_helper_function_prototype_t* program_type_specific_helper_prototype;
     uint32_t count_of_global_helpers;
-    ebpf_helper_function_prototype_t* global_helper_prototype;
+    const ebpf_helper_function_prototype_t* global_helper_prototype;
 } ebpf_program_info_t;
 
 typedef struct _ebpf_helper_function_addresses
@@ -59,11 +66,11 @@ typedef void (*ebpf_program_context_destroy_t)(
 
 typedef struct _ebpf_program_data
 {
-    ebpf_program_info_t* program_info; ///< Pointer to program information.
-    ebpf_helper_function_addresses_t*
+    const ebpf_program_info_t* program_info; ///< Pointer to program information.
+    const ebpf_helper_function_addresses_t*
         program_type_specific_helper_function_addresses; ///< Pointer to program type specific helper function
                                                          ///< addresses.
-    ebpf_helper_function_addresses_t*
+    const ebpf_helper_function_addresses_t*
         global_helper_function_addresses;           ///< Pointer to global helper function addresses being overriden.
     ebpf_program_context_create_t context_create;   ///< Pointer to context create function.
     ebpf_program_context_destroy_t context_destroy; ///< Pointer to context destroy function.
@@ -73,8 +80,8 @@ typedef struct _ebpf_program_data
 typedef struct _ebpf_program_section_info
 {
     const wchar_t* section_name;
-    GUID* program_type;
-    GUID* attach_type;
+    const GUID* program_type;
+    const GUID* attach_type;
     uint32_t bpf_program_type;
     uint32_t bpf_attach_type;
 } ebpf_program_section_info_t;

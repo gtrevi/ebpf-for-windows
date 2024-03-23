@@ -60,6 +60,10 @@ _net_ebpf_extension_program_info_provider_attach_client(
     UNREFERENCED_PARAMETER(client_binding_context);
 
     if ((provider_binding_context == NULL) || (provider_dispatch == NULL)) {
+        NET_EBPF_EXT_LOG_MESSAGE(
+            NET_EBPF_EXT_TRACELOG_LEVEL_ERROR,
+            NET_EBPF_EXT_TRACELOG_KEYWORD_EXTENSION,
+            "Unexpected NULL argument(s). Attach attempt rejected.");
         status = STATUS_INVALID_PARAMETER;
         goto Exit;
     }
@@ -69,10 +73,9 @@ _net_ebpf_extension_program_info_provider_attach_client(
 
     program_info_client = (net_ebpf_extension_program_info_client_t*)ExAllocatePoolUninitialized(
         NonPagedPoolNx, sizeof(net_ebpf_extension_program_info_client_t), NET_EBPF_EXTENSION_POOL_TAG);
-    if (program_info_client == NULL) {
-        status = STATUS_NO_MEMORY;
-        goto Exit;
-    }
+    NET_EBPF_EXT_BAIL_ON_ALLOC_FAILURE_STATUS(
+        NET_EBPF_EXT_TRACELOG_KEYWORD_EXTENSION, program_info_client, "program_info_client", status);
+
     memset(program_info_client, 0, sizeof(net_ebpf_extension_program_info_client_t));
 
     program_info_client->nmr_binding_handle = nmr_binding_handle;
@@ -83,8 +86,9 @@ Exit:
         *provider_binding_context = program_info_client;
         program_info_client = NULL;
     } else {
-        if (program_info_client)
+        if (program_info_client) {
             ExFreePool(program_info_client);
+        }
     }
     NET_EBPF_EXT_RETURN_NTSTATUS(status);
 }
@@ -109,17 +113,27 @@ _net_ebpf_extension_program_info_provider_detach_client(_In_ const void* provide
 static void
 _net_ebpf_extension_program_info_provider_cleanup_binding_context(_Frees_ptr_ void* provider_binding_context)
 {
-    ExFreePool(provider_binding_context);
+    if (provider_binding_context != NULL) {
+        ExFreePool(provider_binding_context);
+    }
 }
 
 void
 net_ebpf_extension_program_info_provider_unregister(
-    _Frees_ptr_opt_ net_ebpf_extension_program_info_provider_t* provider_context)
+    _In_opt_ _Frees_ptr_opt_ net_ebpf_extension_program_info_provider_t* provider_context)
 {
     if (provider_context != NULL) {
-        NTSTATUS status = NmrDeregisterProvider(provider_context->nmr_provider_handle);
-        if (status == STATUS_PENDING)
-            NmrWaitForProviderDeregisterComplete(provider_context->nmr_provider_handle);
+        if (provider_context->nmr_provider_handle != NULL) {
+            NTSTATUS status = NmrDeregisterProvider(provider_context->nmr_provider_handle);
+            if (status == STATUS_PENDING) {
+
+                // Wait for clients to detach.
+                NmrWaitForProviderDeregisterComplete(provider_context->nmr_provider_handle);
+            } else {
+                NET_EBPF_EXT_LOG_NTSTATUS_API_FAILURE(
+                    NET_EBPF_EXT_TRACELOG_KEYWORD_EXTENSION, "NmrDeregisterProvider", status);
+            }
+        }
         ExFreePool(provider_context);
     }
 }
@@ -137,10 +151,9 @@ net_ebpf_extension_program_info_provider_register(
 
     local_provider_context = (net_ebpf_extension_program_info_provider_t*)ExAllocatePoolUninitialized(
         NonPagedPoolNx, sizeof(net_ebpf_extension_program_info_provider_t), NET_EBPF_EXTENSION_POOL_TAG);
-    if (local_provider_context == NULL) {
-        status = STATUS_NO_MEMORY;
-        goto Exit;
-    }
+    NET_EBPF_EXT_BAIL_ON_ALLOC_FAILURE_STATUS(
+        NET_EBPF_EXT_TRACELOG_KEYWORD_EXTENSION, local_provider_context, "local_provider_context", status);
+
     memset(local_provider_context, 0, sizeof(net_ebpf_extension_program_info_provider_t));
 
     characteristics = &local_provider_context->characteristics;
@@ -156,15 +169,21 @@ net_ebpf_extension_program_info_provider_register(
     characteristics->ProviderRegistrationInstance.ModuleId = parameters->provider_module_id;
 
     status = NmrRegisterProvider(characteristics, local_provider_context, &local_provider_context->nmr_provider_handle);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
+
+        // The docs don't mention the (out) handle status on failure, so explicitly mark it as invalid.
+        local_provider_context->nmr_provider_handle = NULL;
+        NET_EBPF_EXT_LOG_NTSTATUS_API_FAILURE(NET_EBPF_EXT_TRACELOG_KEYWORD_EXTENSION, "NmrRegisterProvider", status);
         goto Exit;
+    }
 
     *provider_context = local_provider_context;
     local_provider_context = NULL;
 
 Exit:
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         net_ebpf_extension_program_info_provider_unregister(local_provider_context);
+    }
 
     NET_EBPF_EXT_RETURN_NTSTATUS(status);
 }

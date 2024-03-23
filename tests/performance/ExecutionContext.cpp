@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
 
+#define EBPF_FILE_ID EBPF_FILE_ID_PERFORMANCE_TESTS
+
 #define TEST_AREA "ExecutionContext"
 
 #include "performance.h"
@@ -19,24 +21,24 @@ typedef class _ebpf_program_test_state
     _ebpf_program_test_state(std::vector<ebpf_instruction_t> byte_code)
         : byte_code(byte_code), program_info_provider(nullptr)
     {
-        ebpf_program_parameters_t parameters = {EBPF_PROGRAM_TYPE_XDP};
+        ebpf_program_parameters_t parameters = {EBPF_PROGRAM_TYPE_SAMPLE};
         REQUIRE(ebpf_core_initiate() == EBPF_SUCCESS);
 
         // Create the program info provider.  We can only do this after calling
         // ebpf_core_initiate() since that initializes the interface GUID.
-        program_info_provider = new _program_info_provider(EBPF_PROGRAM_TYPE_XDP);
+        program_info_provider = new _program_info_provider();
+        REQUIRE(program_info_provider->initialize(EBPF_PROGRAM_TYPE_SAMPLE) == EBPF_SUCCESS);
 
-        REQUIRE(ebpf_program_create(&program) == EBPF_SUCCESS);
-
-        REQUIRE(ebpf_program_initialize(program, &parameters) == EBPF_SUCCESS);
+        REQUIRE(ebpf_program_create(&parameters, &program) == EBPF_SUCCESS);
     }
     ~_ebpf_program_test_state()
     {
-        ebpf_object_release_reference(reinterpret_cast<ebpf_core_object_t*>(program));
+        EBPF_OBJECT_RELEASE_REFERENCE(reinterpret_cast<ebpf_core_object_t*>(program));
         delete program_info_provider;
         ebpf_core_terminate();
     }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
     void
     prepare_jit_program()
     {
@@ -70,16 +72,18 @@ typedef class _ebpf_program_test_state
                 reinterpret_cast<uint8_t*>(byte_code.data()),
                 byte_code.size() * sizeof(ebpf_instruction_t)) == EBPF_SUCCESS);
     }
+#endif
 
     void
     test(void* context)
     {
         uint32_t result;
         ebpf_execution_context_state_t state = {0};
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         ebpf_get_execution_context_state(&state);
         ebpf_program_invoke(program, context, &result, &state);
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
   private:
@@ -93,7 +97,7 @@ typedef class _ebpf_map_test_state
   public:
     _ebpf_map_test_state(ebpf_map_type_t type, std::optional<uint32_t> map_size = {})
     {
-        ebpf_utf8_string_t name{(uint8_t*)"test", 4};
+        cxplat_utf8_string_t name{(uint8_t*)"test", 4};
         REQUIRE(ebpf_core_initiate() == EBPF_SUCCESS);
         ebpf_map_definition_in_memory_t definition{
             type, sizeof(uint32_t), sizeof(uint64_t), map_size.has_value() ? map_size.value() : ebpf_get_cpu_count()};
@@ -111,7 +115,7 @@ typedef class _ebpf_map_test_state
     }
     ~_ebpf_map_test_state()
     {
-        ebpf_object_release_reference((ebpf_core_object_t*)map);
+        EBPF_OBJECT_RELEASE_REFERENCE((ebpf_core_object_t*)map);
         ebpf_core_terminate();
     }
 
@@ -121,11 +125,12 @@ typedef class _ebpf_map_test_state
         uint32_t key = cpu_id;
         volatile uint64_t* value = nullptr;
 
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         (void)ebpf_map_find_entry(map, 0, (uint8_t*)&key, 0, (uint8_t*)&value, EBPF_MAP_FLAG_HELPER);
         uint64_t local = *value;
         UNREFERENCED_PARAMETER(local);
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
     void
@@ -133,10 +138,11 @@ typedef class _ebpf_map_test_state
     {
         uint32_t key = cpu_id;
         uint64_t* value = nullptr;
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         (void)ebpf_map_find_entry(map, 0, (uint8_t*)&key, 0, (uint8_t*)&value, EBPF_MAP_FLAG_HELPER);
         (*value)++;
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
     void
@@ -144,9 +150,10 @@ typedef class _ebpf_map_test_state
     {
         uint32_t key = cpu_id;
         uint64_t value = 0;
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         (void)ebpf_map_update_entry(map, 0, (uint8_t*)&key, 0, (uint8_t*)&value, EBPF_ANY, EBPF_MAP_FLAG_HELPER);
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
     void
@@ -154,9 +161,10 @@ typedef class _ebpf_map_test_state
     {
         uint32_t key = ebpf_random_uint32();
         uint64_t value = 0;
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         (void)ebpf_map_update_entry(map, 0, (uint8_t*)&key, 0, (uint8_t*)&value, EBPF_ANY, EBPF_MAP_FLAG_HELPER);
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
     void
@@ -172,7 +180,8 @@ typedef class _ebpf_map_test_state
             }
         }
         uint32_t key = lru_key_base + (ebpf_random_uint32() % lru_key_range);
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         // Check if the current key is present.
         if (ebpf_map_find_entry(map, 0, (uint8_t*)&key, 0, (uint8_t*)&value, EBPF_MAP_FLAG_HELPER) == EBPF_SUCCESS) {
             // Cache hit.
@@ -180,7 +189,7 @@ typedef class _ebpf_map_test_state
             // Cache miss. Add it to the LRU map.
             (void)ebpf_map_update_entry(map, 0, (uint8_t*)&key, 0, (uint8_t*)&value, EBPF_ANY, EBPF_MAP_FLAG_HELPER);
         }
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
   private:
@@ -198,7 +207,7 @@ typedef class _ebpf_map_lpm_trie_test_state
     void
     populate_ipv4_routes(size_t route_count)
     {
-        ebpf_utf8_string_t name{(uint8_t*)"ipv4_route_table", 11};
+        cxplat_utf8_string_t name{(uint8_t*)"ipv4_route_table", 11};
         ebpf_map_definition_in_memory_t definition{
             BPF_MAP_TYPE_LPM_TRIE, sizeof(uint32_t) * 2, sizeof(uint64_t), static_cast<uint32_t>(route_count)};
 
@@ -232,11 +241,12 @@ typedef class _ebpf_map_lpm_trie_test_state
         std::vector<uint8_t> key(prefix.size() + sizeof(length));
         memcpy(key.data(), &length, sizeof(length));
         std::copy(prefix.begin(), prefix.end(), key.begin() + sizeof(length));
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         REQUIRE(
             ebpf_map_update_entry(map, key.size(), key.data(), value.size(), value.data(), EBPF_ANY, 0) ==
             EBPF_SUCCESS);
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
     void
@@ -249,15 +259,16 @@ typedef class _ebpf_map_lpm_trie_test_state
         } ipv4_key = {32, ipv4_routes[ebpf_random_uint32() % ipv4_routes.size()].second};
         volatile uint64_t* value = nullptr;
 
-        REQUIRE(ebpf_epoch_enter() == EBPF_SUCCESS);
+        ebpf_epoch_state_t epoch_state;
+        ebpf_epoch_enter(&epoch_state);
         (void)ebpf_map_find_entry(map, sizeof(ipv4_key), (uint8_t*)&ipv4_key, sizeof(value), (uint8_t*)&value, 0);
         UNREFERENCED_PARAMETER(value);
-        ebpf_epoch_exit();
+        ebpf_epoch_exit(&epoch_state);
     }
 
     ~_ebpf_map_lpm_trie_test_state()
     {
-        ebpf_object_release_reference((ebpf_core_object_t*)map);
+        EBPF_OBJECT_RELEASE_REFERENCE((ebpf_core_object_t*)map);
         ebpf_core_terminate();
     }
 
@@ -270,11 +281,13 @@ static ebpf_program_test_state_t* _ebpf_program_test_state_instance = nullptr;
 static ebpf_map_test_state_t* _ebpf_map_test_state_instance = nullptr;
 static ebpf_map_lpm_trie_test_state_t* _ebpf_map_lpm_trie_test_state_instance = nullptr;
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 static void
 _ebpf_program_invoke()
 {
     _ebpf_program_test_state_instance->test(nullptr);
 }
+#endif
 
 static void
 _map_find_read_test(uint32_t cpu_id)
@@ -418,6 +431,7 @@ test_bpf_map_lookup_lru_elem(bool preemptible)
     measure.run_test();
 }
 
+#if !defined(CONFIG_BPF_JIT_DISABLED) || !defined(CONFIG_BPF_INTERPRETER_DISABLED)
 void
 test_program_invoke_jit(bool preemptible)
 {
@@ -444,6 +458,7 @@ test_program_invoke_interpret(bool preemptible)
     _performance_measure measure(__FUNCTION__, preemptible, _ebpf_program_invoke, iterations);
     measure.run_test();
 }
+#endif
 
 template <size_t route_count>
 void

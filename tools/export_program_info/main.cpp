@@ -5,13 +5,14 @@
 
 #include <iostream>
 #include <string>
+#include <winerror.h>
 
 int
 main(int argc, char** argv)
 {
     bool clear = false;
 
-    if (argc != 1 && argc != 2) {
+    if (argc > 2) {
         print_help(argv[0]);
         return 1;
     }
@@ -47,9 +48,9 @@ main(int argc, char** argv)
         }
     } else {
         std::cout << "Clearing eBPF store." << std::endl;
-        status = clear_all_ebpf_stores();
+        status = clear_ebpf_store();
         if (status != EBPF_SUCCESS) {
-            std::cout << "Failed clear_all_ebpf_stores() - ERROR #" << status << std::endl;
+            std::cout << "Failed clear_ebpf_store() - ERROR #" << status << std::endl;
         }
     }
 

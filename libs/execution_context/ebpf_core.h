@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "cxplat.h"
 #include "ebpf_object.h"
 #include "ebpf_platform.h"
 #include "ebpf_program_types.h"
@@ -17,10 +18,7 @@ extern "C"
     extern ebpf_helper_function_prototype_t* ebpf_core_helper_function_prototype;
     extern uint32_t ebpf_core_helper_functions_count;
 
-    extern GUID ebpf_program_information_extension_interface_id;
-    extern GUID ebpf_hook_extension_interface_id;
-
-    extern GUID ebpf_general_helper_function_module_id;
+    extern const NPI_MODULEID ebpf_general_helper_function_module_id;
 
     typedef uint32_t(__stdcall* ebpf_hook_function)(uint8_t*);
 
@@ -126,7 +124,7 @@ extern "C"
      * @retval EBPF_NOT_FOUND No object was pinned to the provided path.
      */
     _Must_inspect_result_ ebpf_result_t
-    ebpf_core_get_pinned_object(_In_ const ebpf_utf8_string_t* path, _Out_ ebpf_handle_t* handle);
+    ebpf_core_get_pinned_object(_In_ const cxplat_utf8_string_t* path, _Out_ ebpf_handle_t* handle);
 
     /**
      * @brief Pin or unpin an object to the provided path. If supplied handle is
@@ -141,7 +139,7 @@ extern "C"
      * @retval EBPF_NOT_FOUND No object was pinned to the provided path.
      */
     _Must_inspect_result_ ebpf_result_t
-    ebpf_core_update_pinning(const ebpf_handle_t handle, _In_ const ebpf_utf8_string_t* path);
+    ebpf_core_update_pinning(const ebpf_handle_t handle, _In_ const cxplat_utf8_string_t* path);
 
     /**
      * @brief Create a new map object.
@@ -156,7 +154,7 @@ extern "C"
      */
     _Must_inspect_result_ ebpf_result_t
     ebpf_core_create_map(
-        _In_ const ebpf_utf8_string_t* map_name,
+        _In_ const cxplat_utf8_string_t* map_name,
         _In_ const ebpf_map_definition_in_memory_t* ebpf_map_definition,
         ebpf_handle_t inner_map_handle,
         _Out_ ebpf_handle_t* map_handle);
@@ -238,6 +236,29 @@ extern "C"
         const size_t count_of_helpers,
         _In_reads_(count_of_helpers) const uint32_t* helper_function_ids,
         _Out_writes_(count_of_helpers) uint64_t* helper_function_addresses);
+
+    /**
+     * @brief Close the FsContext2 from a file object.
+     *
+     * @param[in] context The FsContext2 from a fileobject to close.
+     */
+    void
+    ebpf_core_close_context(_In_opt_ void* context);
+
+    /**
+     * @brief Update the value of a map element with the provided handle.
+     *
+     * @param[in] map_handle Map to update.
+     * @param[in] key Key of the element to update.
+     * @param[in] value Value to update the element with.
+     *
+     * @retval EBPF_SUCCESS The operation was successful.
+     * @retval EBPF_INVALID_OBJECT The provided handle is not valid.
+     * @retval EBPF_INVALID_ARGUMENT An invalid argument was supplied.
+     */
+    _Must_inspect_result_ ebpf_result_t
+    ebpf_core_update_map_with_handle(
+        ebpf_handle_t map_handle, _In_ const uint8_t* key, size_t key_length, ebpf_handle_t value);
 
 #ifdef __cplusplus
 }

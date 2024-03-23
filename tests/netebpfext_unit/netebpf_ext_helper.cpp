@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
 
+#include "net_ebpf_ext_sock_addr.h"
 #include "netebpf_ext_helper.h"
 
-// TODO: Issue #1231 Change to using HKEY_LOCAL_MACHINE
-ebpf_registry_key_t ebpf_root_registry_key = HKEY_CURRENT_USER;
 DEVICE_OBJECT* _net_ebpf_ext_driver_device_object;
 
 constexpr uint32_t _test_destination_ipv4_address = 0x01020304;
@@ -38,60 +37,70 @@ netebpfext_initialize_fwp_classify_parameters(_Out_ fwp_classify_parameters_t* p
     parameters->user_id = _test_user_id;
 }
 
+_netebpf_ext_helper::_netebpf_ext_helper(bool initialize_platform)
+    : _netebpf_ext_helper(nullptr, nullptr, nullptr, initialize_platform)
+{}
+
 _netebpf_ext_helper::_netebpf_ext_helper(
     _In_opt_ const void* npi_specific_characteristics,
     _In_opt_ _ebpf_extension_dispatch_function dispatch_function,
-    _In_opt_ netebpfext_helper_base_client_context_t* client_context)
+    _In_opt_ netebpfext_helper_base_client_context_t* client_context,
+    bool initialize_platform)
 {
-    NTSTATUS status;
-    status = net_ebpf_ext_trace_initiate();
-    REQUIRE(NT_SUCCESS(status));
+    // Do not use REQUIRE() in this constructor or the destructor will never be called
+    // to clean up any state allocated before the REQUIRE.
+
+    if (!NT_SUCCESS(net_ebpf_ext_trace_initiate())) {
+        return;
+    }
     trace_initiated = true;
 
-    REQUIRE(ebpf_platform_initiate() == EBPF_SUCCESS);
-    platform_initialized = true;
+    if (initialize_platform) {
+        if (ebpf_platform_initiate() != EBPF_SUCCESS) {
+            return;
+        }
+        platform_initialized = true;
+    }
 
-    status = net_ebpf_ext_initialize_ndis_handles(driver_object);
-    REQUIRE(NT_SUCCESS(status));
+    if (!NT_SUCCESS(net_ebpf_ext_initialize_ndis_handles(driver_object))) {
+        return;
+    }
 
     ndis_handle_initialized = true;
 
-    status = net_ebpf_ext_register_providers();
-    REQUIRE(NT_SUCCESS(status));
+    if (!NT_SUCCESS(net_ebpf_ext_register_providers())) {
+        return;
+    }
 
     provider_registered = true;
 
-    status = net_ebpf_extension_initialize_wfp_components(device_object);
-    REQUIRE(NT_SUCCESS(status));
+    if (!NT_SUCCESS(net_ebpf_extension_initialize_wfp_components(device_object))) {
+        return;
+    }
 
     wfp_initialized = true;
 
-    REQUIRE(NmrRegisterClient(&program_info_client, this, &nmr_program_info_client_handle) == STATUS_SUCCESS);
+    nmr_program_info_client_handle = std::make_unique<nmr_client_registration_t>(&program_info_client, this);
 
-    nmr_hook_client_handle = INVALID_HANDLE_VALUE;
     this->hook_invoke_function = dispatch_function;
-    if (dispatch_function != nullptr) {
+    if (dispatch_function != nullptr && client_context != nullptr) {
         hook_client.ClientRegistrationInstance.NpiSpecificCharacteristics = npi_specific_characteristics;
         client_context->helper = this;
-        REQUIRE(NmrRegisterClient(&hook_client, client_context, &nmr_hook_client_handle) == STATUS_SUCCESS);
+        nmr_hook_client_handle = std::make_unique<nmr_client_registration_t>(&hook_client, client_context);
     }
+
+    usersim_fwp_set_sublayer_guids(
+        EBPF_DEFAULT_SUBLAYER, EBPF_HOOK_CGROUP_CONNECT_V4_SUBLAYER, EBPF_HOOK_CGROUP_CONNECT_V6_SUBLAYER);
 }
 
 _netebpf_ext_helper::~_netebpf_ext_helper()
 {
-    if (nmr_program_info_client_handle != INVALID_HANDLE_VALUE) {
-        NTSTATUS status = NmrDeregisterClient(nmr_program_info_client_handle);
-        if (status == STATUS_PENDING) {
-            status = NmrWaitForClientDeregisterComplete(nmr_program_info_client_handle);
-        }
-        REQUIRE(status == STATUS_SUCCESS);
+    if (nmr_hook_client_handle) {
+        nmr_hook_client_handle.reset(nullptr);
     }
-    if (nmr_hook_client_handle != INVALID_HANDLE_VALUE) {
-        NTSTATUS status = NmrDeregisterClient(nmr_hook_client_handle);
-        if (status == STATUS_PENDING) {
-            status = NmrWaitForClientDeregisterComplete(nmr_hook_client_handle);
-        }
-        REQUIRE(status == STATUS_SUCCESS);
+
+    if (nmr_program_info_client_handle) {
+        nmr_program_info_client_handle.reset(nullptr);
     }
 
     if (wfp_initialized) {
@@ -126,13 +135,13 @@ _netebpf_ext_helper::program_info_provider_guids()
 }
 
 ebpf_extension_data_t
-_netebpf_ext_helper::get_program_info_provider_data(const GUID& program_info_provider)
+_netebpf_ext_helper::get_program_info_provider_data(_In_ const GUID& program_info_provider)
 {
     auto iter = program_info_providers.find(program_info_provider);
 
-    if (iter == program_info_providers.end()) {
-        throw std::runtime_error("Invalid program_info_provider guid");
-    }
+    // We might not find the provider if some allocation failed during initialization.
+    REQUIRE(iter != program_info_providers.end());
+
     return *iter->second->provider_data;
 }
 
@@ -166,8 +175,7 @@ _netebpf_ext_helper::_program_info_client_attach_provider(
 NTSTATUS
 _netebpf_ext_helper::_program_info_client_detach_provider(_Inout_ void* client_binding_context)
 {
-    auto& program_info_provider = *reinterpret_cast<program_info_provider_t*>(client_binding_context);
-    program_info_provider.parent->program_info_providers.erase(program_info_provider.module_id.Guid);
+    UNREFERENCED_PARAMETER(client_binding_context);
     return STATUS_SUCCESS;
 }
 

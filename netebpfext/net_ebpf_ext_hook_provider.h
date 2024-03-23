@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "ebpf_extension.h"
+#include "framework.h"
 #include "net_ebpf_ext.h"
 
 /**
@@ -16,17 +18,16 @@ typedef struct _net_ebpf_extension_hook_client net_ebpf_extension_hook_client_t;
  *
  * @param[in, out] hook_client Pointer to attached hook NPI client.
  *
- * @retval true The caller should proceed.
- * @retval false Rundown has occurred.
+ * @retval TRUE Rundown was acquired successfully.
+ * @retval False Rundown acquisition failed.
  */
-bool
+_Must_inspect_result_ bool
 net_ebpf_extension_hook_client_enter_rundown(_Inout_ net_ebpf_extension_hook_client_t* hook_client);
 
 /**
  * @brief Release rundown.
  *
  * @param[in, out] hook_client Pointer to attached hook NPI client.
-
  */
 void
 net_ebpf_extension_hook_client_leave_rundown(_Inout_ net_ebpf_extension_hook_client_t* hook_client);
@@ -46,7 +47,6 @@ net_ebpf_extension_hook_client_get_client_data(_In_ const net_ebpf_extension_hoo
  *
  * @param[in] hook_client Pointer to attached hook NPI client.
  * @param[in] data hook-specific provider data.
- *
  */
 void
 net_ebpf_extension_hook_client_set_provider_data(_In_ net_ebpf_extension_hook_client_t* hook_client, const void* data);
@@ -72,7 +72,6 @@ typedef struct _net_ebpf_extension_hook_provider net_ebpf_extension_hook_provide
  * @param[in] provider_context Pointer to hook NPI provider.
  *
  * @returns Pointer to the hook-specific custom data from the provider.
- *
  */
 const void*
 net_ebpf_extension_hook_provider_get_custom_data(_In_ const net_ebpf_extension_hook_provider_t* provider_context);
@@ -83,7 +82,8 @@ net_ebpf_extension_hook_provider_get_custom_data(_In_ const net_ebpf_extension_h
  * @param[in] provider_context Pointer to the provider context being un-registered.
  */
 void
-net_ebpf_extension_hook_provider_unregister(_Frees_ptr_opt_ net_ebpf_extension_hook_provider_t* provider_context);
+net_ebpf_extension_hook_provider_unregister(
+    _In_opt_ _Frees_ptr_opt_ net_ebpf_extension_hook_provider_t* provider_context);
 
 /**
  * @brief This callback function should be implemented by hook modules. This callback is invoked when a hook NPI client
@@ -104,7 +104,6 @@ typedef ebpf_result_t (*net_ebpf_extension_hook_on_client_attach)(
  * @brief This callback function should be implemented by hook modules. This callback is invoked when a hook NPI client
  * is attempting to detach from the hook NPI provider.
  * @param detaching_client Pointer to context of the hook NPI client that is requesting to be detached.
- *
  */
 typedef void (*net_ebpf_extension_hook_on_client_detach)(_In_ const net_ebpf_extension_hook_client_t* detaching_client);
 
@@ -150,7 +149,7 @@ net_ebpf_extension_hook_provider_register(
  */
 _Must_inspect_result_ ebpf_result_t
 net_ebpf_extension_hook_invoke_program(
-    _In_ const net_ebpf_extension_hook_client_t* client, _In_ const void* context, _Out_ uint32_t* result);
+    _In_ const net_ebpf_extension_hook_client_t* client, _Inout_ void* context, _Out_ uint32_t* result);
 
 /**
  * @brief Return client attached to the hook NPI provider.

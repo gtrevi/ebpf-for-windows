@@ -2,9 +2,10 @@
 
 # eBPF for Windows
 
-![CodeQL](https://github.com/microsoft/ebpf-for-windows/workflows/CI/CD/badge.svg?branch=main&event=schedule)
+[![CI/CD](https://github.com/microsoft/ebpf-for-windows/actions/workflows/cicd.yml/badge.svg?branch=main&event=schedule)](https://github.com/microsoft/ebpf-for-windows/actions/workflows/cicd.yml?query=event%3Aschedule++)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/5742/badge)](https://bestpractices.coreinfrastructure.org/projects/5742)
 [![codecov](https://codecov.io/gh/microsoft/ebpf-for-windows/branch/main/graph/badge.svg?token=TXa0UAMvYf)](https://codecov.io/gh/microsoft/ebpf-for-windows)
+[![Perf Dashboard](https://img.shields.io/static/v1?label=Performance&message=Dashboard&color=blue)](https://bpfperformancegrafana.azurewebsites.net/public-dashboards/3826972d0ff245158b6df21d5e6868a9?orgId=1)
 
 eBPF is a well-known technology for providing programmability and agility, especially for extending an
 OS kernel, for use cases such as DoS protection and observability. This project is a work-in-progress that
@@ -62,6 +63,8 @@ For tracking Q&A and general discussion, we use [Discussions](https://github.com
 in github.  This can also function similar to a mailing list if you subscribe to discussion notifications by
 clicking "Watch" (or "Unwatch") and selecting "Custom" -> "Discussions" (or by selecting "All Activity" if
 you want to receive notifications about everything else too).
+
+If you have issues with an eBPF program, start with the [Troubleshooting Guide](docs/TroubleshootingGuide.md).
 
 ## Frequently Asked Questions
 

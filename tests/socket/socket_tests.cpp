@@ -17,13 +17,17 @@
 #include "common_tests.h"
 #include "ebpf_nethooks.h"
 #include "ebpf_structs.h"
+#include "native_helper.hpp"
 #include "socket_helper.h"
 #include "socket_tests_common.h"
+#include "watchdog.h"
 
 #include <chrono>
 #include <future>
 using namespace std::chrono_literals;
 #include <mstcpip.h>
+
+CATCH_REGISTER_LISTENER(_watchdog)
 
 void
 connection_test(
@@ -32,11 +36,15 @@ connection_test(
     _Inout_ receiver_socket_t& receiver_socket,
     uint32_t protocol)
 {
-    struct bpf_object* object = bpf_object__open("cgroup_sock_addr.o");
+    native_module_helper_t helper;
+    helper.initialize("cgroup_sock_addr");
+
+    struct bpf_object* object = bpf_object__open(helper.get_file_name().c_str());
+    bpf_object_ptr object_ptr(object);
+
     REQUIRE(object != nullptr);
     // Load the programs.
     REQUIRE(bpf_object__load(object) == 0);
-
     const char* connect_program_name = (address_family == AF_INET) ? "authorize_connect4" : "authorize_connect6";
     bpf_program* connect_program = bpf_object__find_program_by_name(object, connect_program_name);
     REQUIRE(connect_program != nullptr);
@@ -52,13 +60,13 @@ connection_test(
 
     connection_tuple_t tuple = {0};
     if (address_family == AF_INET) {
-        tuple.dst_ip.ipv4 = htonl(INADDR_LOOPBACK);
-        printf("tuple.dst_ip.ipv4 = %x\n", tuple.dst_ip.ipv4);
+        tuple.remote_ip.ipv4 = htonl(INADDR_LOOPBACK);
+        printf("tuple.remote_ip.ipv4 = %x\n", tuple.remote_ip.ipv4);
     } else {
-        memcpy(tuple.dst_ip.ipv6, &in6addr_loopback, sizeof(tuple.dst_ip.ipv6));
+        memcpy(tuple.remote_ip.ipv6, &in6addr_loopback, sizeof(tuple.remote_ip.ipv6));
     }
-    tuple.dst_port = htons(SOCKET_TEST_PORT);
-    printf("tuple.dst_port = %x\n", tuple.dst_port);
+    tuple.remote_port = htons(SOCKET_TEST_PORT);
+    printf("tuple.remote_port = %x\n", tuple.remote_port);
     tuple.protocol = protocol;
 
     bpf_map* ingress_connection_policy_map = bpf_object__find_map_by_name(object, "ingress_connection_policy_map");
@@ -84,10 +92,11 @@ connection_test(
     // Send loopback message to test port.
     const char* message = CLIENT_MESSAGE;
     sockaddr_storage destination_address{};
-    if (address_family == AF_INET)
+    if (address_family == AF_INET) {
         IN6ADDR_SETV4MAPPED((PSOCKADDR_IN6)&destination_address, &in4addr_loopback, scopeid_unspecified, 0);
-    else
+    } else {
         IN6ADDR_SETLOOPBACK((PSOCKADDR_IN6)&destination_address);
+    }
     sender_socket.send_message_to_remote_host(message, destination_address, SOCKET_TEST_PORT);
 
     // The packet should be blocked by the connect program.
@@ -120,8 +129,6 @@ connection_test(
     // destination.
     sender_socket.send_message_to_remote_host(message, destination_address, SOCKET_TEST_PORT);
     receiver_socket.complete_async_receive();
-
-    bpf_object__close(object);
 }
 
 TEST_CASE("connection_test_udp_v4", "[sock_addr_tests]")
@@ -159,7 +166,12 @@ TEST_CASE("attach_sock_addr_programs", "[sock_addr_tests]")
     bpf_prog_info program_info = {};
     uint32_t program_info_size = sizeof(program_info);
 
-    struct bpf_object* object = bpf_object__open("cgroup_sock_addr.o");
+    native_module_helper_t helper;
+    helper.initialize("cgroup_sock_addr");
+
+    struct bpf_object* object = bpf_object__open(helper.get_file_name().c_str());
+    bpf_object_ptr object_ptr(object);
+
     REQUIRE(object != nullptr);
     // Load the programs.
     REQUIRE(bpf_object__load(object) == 0);
@@ -238,8 +250,6 @@ TEST_CASE("attach_sock_addr_programs", "[sock_addr_tests]")
         BPF_CGROUP_INET6_RECV_ACCEPT,
         0);
     REQUIRE(result == 0);
-
-    bpf_object__close(object);
 }
 
 void
@@ -250,7 +260,11 @@ connection_monitor_test(
     uint32_t protocol,
     bool disconnect)
 {
-    struct bpf_object* object = bpf_object__open("sockops.o");
+    native_module_helper_t helper;
+    helper.initialize("sockops");
+    struct bpf_object* object = bpf_object__open(helper.get_file_name().c_str());
+    bpf_object_ptr object_ptr(object);
+
     REQUIRE(object != nullptr);
     // Load the programs.
     REQUIRE(bpf_object__load(object) == 0);
@@ -266,23 +280,30 @@ connection_monitor_test(
     int local_address_length = 0;
     sender_socket.get_local_address(local_address, local_address_length);
 
-    connection_tuple_t tuple{};
+    connection_tuple_t tuple{}, reverse_tuple{};
     if (address_family == AF_INET) {
-        tuple.src_ip.ipv4 = htonl(INADDR_LOOPBACK);
-        tuple.dst_ip.ipv4 = htonl(INADDR_LOOPBACK);
+        tuple.local_ip.ipv4 = htonl(INADDR_LOOPBACK);
+        tuple.remote_ip.ipv4 = htonl(INADDR_LOOPBACK);
     } else {
-        memcpy(tuple.src_ip.ipv6, &in6addr_loopback, sizeof(tuple.src_ip.ipv6));
-        memcpy(tuple.dst_ip.ipv6, &in6addr_loopback, sizeof(tuple.src_ip.ipv6));
+        memcpy(tuple.local_ip.ipv6, &in6addr_loopback, sizeof(tuple.local_ip.ipv6));
+        memcpy(tuple.remote_ip.ipv6, &in6addr_loopback, sizeof(tuple.local_ip.ipv6));
     }
-    tuple.src_port = INETADDR_PORT(local_address);
-    tuple.dst_port = htons(SOCKET_TEST_PORT);
+    tuple.local_port = INETADDR_PORT(local_address);
+    tuple.remote_port = htons(SOCKET_TEST_PORT);
     tuple.protocol = protocol;
     NET_LUID net_luid = {};
     net_luid.Info.IfType = IF_TYPE_SOFTWARE_LOOPBACK;
     tuple.interface_luid = net_luid.Value;
 
+    reverse_tuple.local_ip = tuple.remote_ip;
+    reverse_tuple.remote_ip = tuple.local_ip;
+    reverse_tuple.local_port = tuple.remote_port;
+    reverse_tuple.remote_port = tuple.local_port;
+    reverse_tuple.protocol = tuple.protocol;
+    reverse_tuple.interface_luid = tuple.interface_luid;
+
     std::vector<std::vector<char>> audit_entry_list;
-    audit_entry_t audit_entries[3] = {0};
+    audit_entry_t audit_entries[4] = {0};
 
     // Connect outbound.
     audit_entries[0].tuple = tuple;
@@ -292,17 +313,25 @@ connection_monitor_test(
     audit_entry_list.push_back(std::vector<char>(p, p + sizeof(audit_entry_t)));
 
     // Connect inbound.
-    audit_entries[1].tuple = tuple;
+    audit_entries[1].tuple = reverse_tuple;
     audit_entries[1].connected = true;
     audit_entries[1].outbound = false;
     p = reinterpret_cast<char*>(&audit_entries[1]);
     audit_entry_list.push_back(std::vector<char>(p, p + sizeof(audit_entry_t)));
 
-    // Disconnect.
+    // Create an audit entry for the disconnect case.
+    // The direction bit is set to false.
     audit_entries[2].tuple = tuple;
     audit_entries[2].connected = false;
     audit_entries[2].outbound = false;
     p = reinterpret_cast<char*>(&audit_entries[2]);
+    audit_entry_list.push_back(std::vector<char>(p, p + sizeof(audit_entry_t)));
+
+    // Create another audit entry for the disconnect event with the reverse packet tuple.
+    audit_entries[3].tuple = reverse_tuple;
+    audit_entries[3].connected = false;
+    audit_entries[3].outbound = false;
+    p = reinterpret_cast<char*>(&audit_entries[3]);
     audit_entry_list.push_back(std::vector<char>(p, p + sizeof(audit_entry_t)));
 
     context->records = &audit_entry_list;
@@ -321,9 +350,10 @@ connection_monitor_test(
     bpf_map* connection_map = bpf_object__find_map_by_name(object, "connection_map");
     REQUIRE(connection_map != nullptr);
 
-    // Update connection map with loopback packet tuple.
+    // Update connection map with loopback packet tuples.
     uint32_t verdict = BPF_SOCK_ADDR_VERDICT_REJECT;
     REQUIRE(bpf_map_update_elem(bpf_map__fd(connection_map), &tuple, &verdict, EBPF_ANY) == 0);
+    REQUIRE(bpf_map_update_elem(bpf_map__fd(connection_map), &reverse_tuple, &verdict, EBPF_ANY) == 0);
 
     // Post an asynchronous receive on the receiver socket.
     receiver_socket.post_async_receive();
@@ -335,10 +365,11 @@ connection_monitor_test(
     // Send loopback message to test port.
     const char* message = CLIENT_MESSAGE;
     sockaddr_storage destination_address{};
-    if (address_family == AF_INET)
+    if (address_family == AF_INET) {
         IN6ADDR_SETV4MAPPED((PSOCKADDR_IN6)&destination_address, &in4addr_loopback, scopeid_unspecified, 0);
-    else
+    } else {
         IN6ADDR_SETLOOPBACK((PSOCKADDR_IN6)&destination_address);
+    }
     sender_socket.send_message_to_remote_host(message, destination_address, SOCKET_TEST_PORT);
     // Receive the packet on test port.
     receiver_socket.complete_async_receive();
@@ -359,8 +390,6 @@ connection_monitor_test(
 
     // Unsubscribe.
     raw_context->unsubscribe();
-
-    bpf_object__close(object);
 }
 
 TEST_CASE("connection_monitor_test_udp_v4", "[sock_ops_tests]")
@@ -425,7 +454,11 @@ TEST_CASE("connection_monitor_test_disconnect_tcp_v6", "[sock_ops_tests]")
 
 TEST_CASE("attach_sockops_programs", "[sock_ops_tests]")
 {
-    struct bpf_object* object = bpf_object__open("sockops.o");
+    native_module_helper_t helper;
+    helper.initialize("sockops");
+    struct bpf_object* object = bpf_object__open(helper.get_file_name().c_str());
+    bpf_object_ptr object_ptr(object);
+
     REQUIRE(object != nullptr);
     // Load the programs.
     REQUIRE(bpf_object__load(object) == 0);
@@ -435,8 +468,6 @@ TEST_CASE("attach_sockops_programs", "[sock_ops_tests]")
 
     int result = bpf_prog_attach(bpf_program__fd(const_cast<const bpf_program*>(_program)), 0, BPF_CGROUP_SOCK_OPS, 0);
     REQUIRE(result == 0);
-
-    bpf_object__close(object);
 }
 
 int

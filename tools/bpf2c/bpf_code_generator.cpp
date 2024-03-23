@@ -12,8 +12,13 @@
 // .\scripts\generate_expected_bpf2c_output.ps1 .\x64\Debug\
 
 #include "bpf_code_generator.h"
-#include "btf_parser.h"
 #include "ebpf_version.h"
+#define ebpf_inst ebpf_inst_btf
+#include "libbtf/btf_map.h"
+#include "libbtf/btf_parse.h"
+#include "libbtf/btf_type_data.h"
+#include "spec_type_descriptors.hpp"
+#undef ebpf_inst
 
 #include <windows.h>
 #include <cassert>
@@ -31,9 +36,7 @@
 #define INDENT "    "
 #define LINE_BREAK_WIDTH 120
 
-#define EBPF_MODE_MASK 0xe0
 #define EBPF_MODE_ATOMIC 0xc0
-#define EBPF_MODE_MEM 0x60
 
 #define EBPF_ATOMIC_FETCH 0x01
 #define EBPF_ATOMIC_ADD 0x00
@@ -47,8 +50,8 @@
 #define EBPF_ATOMIC_XCHG (0xe0 | EBPF_ATOMIC_FETCH)
 #define EBPF_ATOMIC_CMPXCHG (0xf0 | EBPF_ATOMIC_FETCH)
 
-#define EBPF_OP_ATOMIC64 (EBPF_CLS_STX | EBPF_MODE_ATOMIC | EBPF_SIZE_DW)
-#define EBPF_OP_ATOMIC (EBPF_CLS_STX | EBPF_MODE_ATOMIC | EBPF_SIZE_W)
+#define EBPF_OP_ATOMIC64 (INST_CLS_STX | EBPF_MODE_ATOMIC | INST_SIZE_DW)
+#define EBPF_OP_ATOMIC (INST_CLS_STX | EBPF_MODE_ATOMIC | INST_SIZE_W)
 static const std::string _register_names[11] = {
     "r0",
     "r1",
@@ -77,7 +80,7 @@ enum class AluOperations
     Mod,
     Xor,
     Mov,
-    Ashr,
+    Arsh,
     ByteOrder,
 };
 
@@ -155,12 +158,12 @@ static std::map<uint8_t, std::string> _opcode_name_strings = {
     ADD_OPCODE(EBPF_OP_ATOMIC64),   ADD_OPCODE(EBPF_OP_ATOMIC)};
 
 #define IS_ATOMIC_OPCODE(_opcode) \
-    (((_opcode)&EBPF_CLS_MASK) == EBPF_CLS_STX && ((_opcode)&EBPF_MODE_MASK) == EBPF_MODE_ATOMIC)
+    (((_opcode)&INST_CLS_MASK) == INST_CLS_STX && ((_opcode)&INST_MODE_MASK) == EBPF_MODE_ATOMIC)
 
 #define IS_JMP_CLASS_OPCODE(_opcode) \
-    (((_opcode)&EBPF_CLS_MASK) == EBPF_CLS_JMP || ((_opcode)&EBPF_CLS_MASK) == EBPF_CLS_JMP32)
+    (((_opcode)&INST_CLS_MASK) == INST_CLS_JMP || ((_opcode)&INST_CLS_MASK) == INST_CLS_JMP32)
 
-#define IS_JMP32_CLASS_OPCODE(_opcode) (((_opcode)&EBPF_CLS_MASK) == EBPF_CLS_JMP32)
+#define IS_JMP32_CLASS_OPCODE(_opcode) (((_opcode)&INST_CLS_MASK) == INST_CLS_JMP32)
 
 #define IS_SIGNED_CMP_OPCODE(_opcode)                                                          \
     (((_opcode) >> 4) == (EBPF_MODE_JSGT >> 4) || ((_opcode) >> 4) == (EBPF_MODE_JSGE >> 4) || \
@@ -261,8 +264,9 @@ bpf_code_generator::program_sections()
             continue;
         }
         bpf_code_generator::unsafe_string name = section->get_name();
-        if (name.empty() || (section->get_size() == 0) || name == ".text")
+        if (name.empty() || (section->get_size() == 0) || name == ".text") {
             continue;
+        }
         if ((section->get_type() == 1) && (section->get_flags() == 6)) {
             section_names.push_back(section->get_name());
         }
@@ -281,7 +285,7 @@ bpf_code_generator::parse(
     const bpf_code_generator::unsafe_string& section_name,
     const GUID& program_type,
     const GUID& attach_type,
-    const std::optional<std::vector<uint8_t>>& program_info_hash)
+    const std::string& program_info_hash_type)
 {
     current_section = &sections[section_name];
     get_register_name(0);
@@ -289,17 +293,23 @@ bpf_code_generator::parse(
     get_register_name(10);
 
     set_pe_section_name(section_name);
-    set_program_and_attach_type_and_hash(program_type, attach_type, program_info_hash);
+    set_program_and_attach_type_and_hash_type(program_type, attach_type, program_info_hash_type);
     extract_program(section_name);
     extract_relocations_and_maps(section_name);
 }
 
 void
-bpf_code_generator::set_program_and_attach_type_and_hash(
-    const GUID& program_type, const GUID& attach_type, const std::optional<std::vector<uint8_t>>& program_info_hash)
+bpf_code_generator::set_program_and_attach_type_and_hash_type(
+    const GUID& program_type, const GUID& attach_type, const std::string& program_info_hash_type)
 {
     memcpy(&current_section->program_type, &program_type, sizeof(GUID));
     memcpy(&current_section->expected_attach_type, &attach_type, sizeof(GUID));
+    current_section->program_info_hash_type = program_info_hash_type;
+}
+
+void
+bpf_code_generator::set_program_hash_info(const std::optional<std::vector<uint8_t>>& program_info_hash)
+{
     current_section->program_info_hash = program_info_hash;
 }
 
@@ -311,6 +321,17 @@ bpf_code_generator::generate(const bpf_code_generator::unsafe_string& section_na
     generate_labels();
     build_function_table();
     encode_instructions(section_name);
+}
+
+std::vector<int32_t>
+bpf_code_generator::get_helper_ids()
+{
+    std::vector<int32_t> helper_ids;
+    for (const auto& [name, helper] : current_section->helper_functions) {
+        helper_ids.push_back(helper.id);
+    }
+
+    return helper_ids;
 }
 
 void
@@ -348,61 +369,372 @@ bpf_code_generator::extract_program(const bpf_code_generator::unsafe_string& sec
     }
 }
 
+// BTF maps sections are identified as any section called ".maps".
+// PREVAIL does not support multiple BTF map sections.
+static bool
+_is_btf_map_section(const std::string& name)
+{
+    return name == ".maps";
+}
+
+// Legacy (non-BTF) maps sections are identified as any section called "maps", or matching "maps/<map-name>".
+static bool
+_is_legacy_map_section(const std::string& name)
+{
+    std::string maps_prefix = "maps/";
+    return name == "maps" || (name.length() > 5 && name.compare(0, maps_prefix.length(), maps_prefix) == 0);
+}
+
+void
+bpf_code_generator::visit_symbols(symbol_visitor_t visitor, const unsafe_string& section_name)
+{
+    ELFIO::const_symbol_section_accessor symbols{reader, get_required_section(".symtab")};
+    auto target_section = get_required_section(section_name);
+
+    for (ELFIO::Elf_Xword index = 0; index < symbols.get_symbols_num(); index++) {
+        std::string unsafe_name{};
+        ELFIO::Elf64_Addr value{};
+        ELFIO::Elf_Xword size{};
+        unsigned char bind{};
+        unsigned char symbol_type{};
+        ELFIO::Elf_Half section_index{};
+        unsigned char other{};
+        symbols.get_symbol(index, unsafe_name, value, size, bind, symbol_type, section_index, other);
+        if (section_index != target_section->get_index()) {
+            continue;
+        }
+        if (unsafe_name.empty()) {
+            continue;
+        }
+        unsafe_string name(unsafe_name);
+        if (value > target_section->get_size()) {
+            throw bpf_code_generator_exception("invalid symbol value");
+        }
+
+        // Check for overflow of value + size
+        if ((value + size) < value) {
+            throw bpf_code_generator_exception("invalid symbol value");
+        }
+
+        if ((value + size) > target_section->get_size()) {
+            throw bpf_code_generator_exception("invalid symbol value");
+        }
+
+        if (section_index == target_section->get_index()) {
+            visitor(name, value, bind, symbol_type, size);
+        }
+    }
+}
+
+template <typename T>
+static std::vector<T>
+vector_of(const ELFIO::section& sec)
+{
+    auto data = sec.get_data();
+    auto size = sec.get_size();
+    if ((size % sizeof(T) != 0) || size > UINT32_MAX || !data) {
+        throw std::runtime_error("Invalid argument to vector_of");
+    }
+    return {(T*)data, (T*)(data + size)};
+}
+
+// Parse a BTF maps section.
+void
+bpf_code_generator::parse_btf_maps_section(const unsafe_string& name)
+{
+    auto map_section = get_optional_section(name);
+    if (map_section) {
+        auto btf_section = get_required_section(".BTF");
+        std::optional<libbtf::btf_type_data> btf_data = vector_of<std::byte>(*btf_section);
+        std::vector<EbpfMapDescriptor> map_descriptors;
+
+        auto map_data = libbtf::parse_btf_map_section(btf_data.value());
+        std::map<std::string, size_t> map_offsets;
+        size_t anonymous_map_count = 0;
+        for (auto& map : map_data) {
+            if (map.name.empty()) {
+                map.name = "__anonymous_" + std::to_string(++anonymous_map_count);
+            }
+            map_offsets.insert({map.name, map_descriptors.size()});
+            map_descriptors.push_back({
+                .original_fd = static_cast<int>(map.type_id),
+                .type = map.map_type,
+                .key_size = map.key_size,
+                .value_size = map.value_size,
+                .max_entries = map.max_entries,
+                .inner_map_fd = map.inner_map_type_id != 0 ? map.inner_map_type_id : -1,
+            });
+        }
+        auto map_name_to_index = map_offsets;
+        size_t index = 0;
+
+        std::map<std::pair<size_t, size_t>, unsafe_string> map_names_by_offset;
+        std::map<unsafe_string, size_t> map_names_to_values_offset;
+
+        // Emit map definitions in the same order as the maps in the .maps section.
+        visit_symbols(
+            [&](const unsafe_string& unsafe_symbol_name,
+                uint64_t symbol_value,
+                unsigned char bind,
+                unsigned char symbol_type,
+                uint64_t symbol_size) {
+                UNREFERENCED_PARAMETER(bind);
+                UNREFERENCED_PARAMETER(symbol_type);
+                UNREFERENCED_PARAMETER(symbol_size);
+                auto range = std::make_pair(symbol_value, symbol_value + symbol_size);
+                if (map_names_by_offset.find(range) == map_names_by_offset.end()) {
+                    map_names_by_offset[range] = unsafe_symbol_name;
+                }
+            },
+            name);
+
+        // Add anonymous maps to the end of the map list.
+        size_t last_map_offset = map_names_by_offset.size() != 0 ? map_names_by_offset.rbegin()->first.second : 1;
+        for (auto& map : map_data) {
+            if (!map.name.starts_with("__anonymous")) {
+                continue;
+            }
+            map_names_by_offset[std::make_pair(last_map_offset, last_map_offset)] = map.name;
+            last_map_offset++;
+        }
+
+        for (const auto& [range, unsafe_symbol_name] : map_names_by_offset) {
+            if (map_name_to_index.find(unsafe_symbol_name.raw()) == map_name_to_index.end()) {
+                throw bpf_code_generator_exception("map symbol not found in map section");
+            }
+            ebpf_map_definition_in_file_t map_definition{};
+            EbpfMapDescriptor map_descriptor = map_descriptors[map_name_to_index[unsafe_symbol_name.raw()]];
+
+            map_definition.type = static_cast<ebpf_map_type_t>(map_descriptor.type);
+            map_definition.key_size = map_descriptor.key_size;
+            map_definition.value_size = map_descriptor.value_size;
+            map_definition.max_entries = map_descriptor.max_entries;
+            map_definition.id = map_descriptor.original_fd;
+            map_definition.inner_id = map_descriptor.inner_map_fd != -1 ? map_descriptor.inner_map_fd : 0;
+
+            // Get pinning data from the BTF data.
+            auto map_struct = btf_data->get_kind_type<libbtf::btf_kind_struct>(map_descriptor.original_fd);
+            for (const auto& member : map_struct.members) {
+                if (member.name == "pinning") {
+                    // This should use value_from_BTF__uint from btf_parser.cpp, but it's static.
+                    auto pinning_type_id = member.type;
+                    // Dereference the pointer type.
+                    pinning_type_id = btf_data->dereference_pointer(pinning_type_id);
+                    // Get the array type.
+                    auto pinning_type = btf_data->get_kind_type<libbtf::btf_kind_array>(pinning_type_id);
+                    // Value is encoded as the number of elements in the array.
+                    map_definition.pinning = static_cast<ebpf_pin_type_t>(pinning_type.count_of_elements);
+                }
+                // "values" is a variable length array of pointers to values.
+                // Compute the offset of the values array and resize the vector
+                // to hold the initial values.
+                if (member.name == "values") {
+                    map_names_to_values_offset[unsafe_symbol_name] = member.offset_from_start_in_bits / 8;
+                    if (map_names_to_values_offset[unsafe_symbol_name] > (range.second - range.first)) {
+                        throw bpf_code_generator_exception("map values offset is outside of map range");
+                    }
+
+                    // Compute the number of initial values and resize the vector.
+                    // Size is the number of bytes in the range minus the offset of the values array divided by the
+                    // size of a pointer.
+                    size_t value_count =
+                        ((range.second - range.first) - map_names_to_values_offset[unsafe_symbol_name]) /
+                        sizeof(uintptr_t);
+                    if (value_count > 0) {
+                        // If the map is statically initialized, then the keys must be uint32_t.
+                        if (map_definition.key_size != sizeof(uint32_t)) {
+                            throw bpf_code_generator_exception("map keys must be uint32_t for static initialization");
+                        }
+                        map_initial_values[unsafe_symbol_name].resize(value_count);
+                    }
+                }
+            }
+            map_definitions[unsafe_symbol_name] = {map_definition, index++};
+        }
+
+        // Extract any initial values for maps.
+        // Maps are stored in the .maps section. The symbols for the .maps section gives the starting and ending offset
+        // of each map. The relocations for the .maps section give the offset of the initial values for each map.
+        // Each relocation record is a pair of (offset, symbol) where the symbol is the map value to insert.
+        // To convert offset to index in the "values" field, the first step is to determine which map the offset is
+        // for. This is done by finding the map whose range contains the offset. Then the offset is converted to an
+        // index by subtracting the offset of the values array and dividing by the size of a pointer.
+        // Finally the value is inserted into the map's initial values vector at the computed index.
+        auto map_relocation_section = get_optional_section(".rel.maps");
+        if (map_relocation_section) {
+            ELFIO::const_symbol_section_accessor symbols{reader, get_required_section(".symtab")};
+            ELFIO::const_relocation_section_accessor relocation_reader{reader, map_relocation_section};
+            ELFIO::Elf_Xword relocation_count = relocation_reader.get_entries_num();
+            for (ELFIO::Elf_Xword relocation_index = 0; relocation_index < relocation_count; relocation_index++) {
+                ELFIO::Elf64_Addr offset{};
+                ELFIO::Elf_Word symbol{};
+                unsigned int type{};
+                ELFIO::Elf_Sxword addend{};
+                relocation_reader.get_entry(relocation_index, offset, symbol, type, addend);
+                {
+                    std::string unsafe_name{};
+                    ELFIO::Elf64_Addr value{};
+                    ELFIO::Elf_Xword size{};
+                    unsigned char bind{};
+                    unsigned char symbol_type{};
+                    ELFIO::Elf_Half section_index{};
+                    unsigned char other{};
+                    if (!symbols.get_symbol(
+                            symbol, unsafe_name, value, size, bind, symbol_type, section_index, other)) {
+                        throw bpf_code_generator_exception("Can't perform relocation at offset ", offset);
+                    }
+
+                    // Determine which map this offset is in.
+                    // The map_names_by_offset map is sorted by start and end offset of the map.
+                    // The lower_bound function returns the first entry where the (start, end) offset is >=
+                    // (offset, 0). Because this range has an invalid end offset, it will never be an exact match
+                    // and will always return the first map that starts after the offset.
+                    auto iter = map_names_by_offset.lower_bound(std::make_pair(offset, 0));
+
+                    // Boundary conditions are:
+                    // 1. The offset is before the first map -> iter == map_names_by_offset.begin()
+                    // 2. The offset is after the last map -> iter == map_names_by_offset.end()
+
+                    // map_names_by_offset cannot be empty because there is at least one map.
+
+                    // Select the previous map if it exists.
+                    if (iter != map_names_by_offset.begin()) {
+                        iter--;
+                    } else {
+                        // If there is no previous map, then the offset is before the first map.
+                        throw bpf_code_generator_exception("Can't perform relocation at offset ", offset);
+                    }
+
+                    // Sanity check that the offset is within the map range.
+                    if (offset < iter->first.first || offset > iter->first.second) {
+                        throw bpf_code_generator_exception("Can't perform relocation at offset ", offset);
+                    }
+
+                    auto map_name = iter->second;
+                    // Convert the relocation offset into an index in the initial value array.
+                    // iter->first.first is the start of map data in the .maps section.
+                    // map_names_to_values_offset[map_name] is the offset of the values array in the map data.
+                    // offset is from the start of the .maps section where the relocation is performed.
+                    // The index is the offset from the start of the values array divided by the size of a pointer.
+                    size_t value_array_start = iter->first.first + map_names_to_values_offset[map_name];
+                    size_t value_array_index = (offset - value_array_start) / sizeof(uintptr_t);
+                    if (value_array_index >= map_initial_values[map_name].size()) {
+                        throw bpf_code_generator_exception("Can't perform relocation at offset ", offset);
+                    }
+                    map_initial_values[map_name][value_array_index] = unsafe_name;
+                }
+            }
+        }
+    }
+}
+
+// Parse global data (currently map information) in the eBPF file.
 void
 bpf_code_generator::parse()
 {
-    auto map_section = get_optional_section("maps");
-    if (map_section) {
-        ELFIO::const_symbol_section_accessor symbols{reader, get_required_section(".symtab")};
-        size_t data_size = map_section->get_size();
-        size_t map_count = data_size / sizeof(ebpf_map_definition_in_file_t);
-
-        if (data_size % sizeof(ebpf_map_definition_in_file_t) != 0) {
-            throw bpf_code_generator_exception(
-                "bad maps section size, must be a multiple of " +
-                std::to_string(sizeof(ebpf_map_definition_in_file_t)));
+    for (auto& section : reader.sections) {
+        std::string name = section->get_name();
+        if (_is_btf_map_section(name)) {
+            parse_btf_maps_section(name);
+        } else if (_is_legacy_map_section(name)) {
+            parse_legacy_maps_section(name);
         }
+    }
+}
 
-        for (ELFIO::Elf_Xword i = 0; i < symbols.get_symbols_num(); i++) {
-            std::string unsafe_symbol_name;
-            ELFIO::Elf64_Addr symbol_value{};
-            unsigned char symbol_bind{};
-            unsigned char symbol_type{};
-            ELFIO::Elf_Half symbol_section_index{};
-            unsigned char symbol_other{};
-            ELFIO::Elf_Xword symbol_size{};
+static std::tuple<std::string, ELFIO::Elf_Half>
+_get_symbol_name_and_section_index(ELFIO::const_symbol_section_accessor& symbols, ELFIO::Elf_Xword index)
+{
+    std::string symbol_name;
+    ELFIO::Elf64_Addr value{};
+    ELFIO::Elf_Xword size{};
+    unsigned char bind{};
+    unsigned char type{};
+    ELFIO::Elf_Half section_index{};
+    unsigned char other{};
+    symbols.get_symbol(index, symbol_name, value, size, bind, type, section_index, other);
+    return {symbol_name, section_index};
+}
 
-            symbols.get_symbol(
-                i,
-                unsafe_symbol_name,
-                symbol_value,
-                symbol_size,
-                symbol_bind,
-                symbol_type,
-                symbol_section_index,
-                symbol_other);
+// We should consider refactoring the code that parses ELF files into a form that can be used by both ebpf-verifier and
+// bpf2c.
+void
+bpf_code_generator::parse_legacy_maps_section(const unsafe_string& name)
+{
+    auto map_section = get_optional_section(name);
+    if (!map_section) {
+        return;
+    }
 
-            if (symbol_section_index == map_section->get_index()) {
-                if (symbol_size != sizeof(ebpf_map_definition_in_file_t)) {
-                    throw bpf_code_generator_exception("invalid map size");
-                }
-                if (symbol_value > map_section->get_size()) {
-                    throw bpf_code_generator_exception("invalid symbol value");
-                }
-                if ((symbol_value + symbol_size) > map_section->get_size()) {
-                    throw bpf_code_generator_exception("invalid symbol value");
-                }
+    // Count the number of symbols that point into this maps section.
+    ELFIO::const_symbol_section_accessor symbols{reader, get_required_section(".symtab")};
+    int map_count = 0;
+    for (ELFIO::Elf_Xword index = 0; index < symbols.get_symbols_num(); index++) {
+        auto [symbol_name, section_index] = _get_symbol_name_and_section_index(symbols, index);
+        if ((section_index == map_section->get_index()) && !symbol_name.empty()) {
+            map_count++;
+        }
+    }
+    if (map_count == 0) {
+        return;
+    }
 
-                map_definitions[unsafe_symbol_name].definition =
-                    *reinterpret_cast<const ebpf_map_definition_in_file_t*>(map_section->get_data() + symbol_value);
+    size_t data_size = map_section->get_size();
+    size_t map_record_size = data_size / map_count;
+    if (map_record_size == 0) {
+        return;
+    }
 
-                map_definitions[unsafe_symbol_name].index = symbol_value / sizeof(ebpf_map_definition_in_file_t);
+    if (data_size % map_record_size != 0) {
+        throw bpf_code_generator_exception(
+            "bad maps section size, must be a multiple of " + std::to_string(map_record_size));
+    }
+
+    size_t old_map_count = map_definitions.size();
+    for (ELFIO::Elf_Xword i = 0; i < symbols.get_symbols_num(); i++) {
+        std::string unsafe_symbol_name;
+        ELFIO::Elf64_Addr symbol_value{};
+        unsigned char symbol_bind{};
+        unsigned char symbol_type{};
+        ELFIO::Elf_Half symbol_section_index{};
+        unsigned char symbol_other{};
+        ELFIO::Elf_Xword symbol_size{};
+
+        symbols.get_symbol(
+            i,
+            unsafe_symbol_name,
+            symbol_value,
+            symbol_size,
+            symbol_bind,
+            symbol_type,
+            symbol_section_index,
+            symbol_other);
+
+        if (symbol_section_index == map_section->get_index()) {
+            if (symbol_size != map_record_size) {
+                throw bpf_code_generator_exception("invalid map size");
             }
-        }
+            if (symbol_value > map_section->get_size()) {
+                throw bpf_code_generator_exception("invalid symbol value");
+            }
+            if ((symbol_value + symbol_size) > map_section->get_size()) {
+                throw bpf_code_generator_exception("invalid symbol value");
+            }
 
-        if (map_definitions.size() != map_count) {
-            throw bpf_code_generator_exception("bad maps section, map must have associated symbol");
+            // Copy the data from the record into an ebpf_map_definition_in_file_t structure,
+            // zero-padding any extra, and being careful not to overflow the buffer.
+            map_definitions[unsafe_symbol_name].definition = {};
+            memcpy(
+                &map_definitions[unsafe_symbol_name].definition,
+                map_section->get_data() + symbol_value,
+                min(sizeof(map_definitions[unsafe_symbol_name].definition), map_record_size));
+
+            map_definitions[unsafe_symbol_name].index = old_map_count + (symbol_value / map_record_size);
         }
+    }
+
+    if (map_definitions.size() != old_map_count + map_count) {
+        throw bpf_code_generator_exception("bad maps section, map must have associated symbol");
     }
 }
 
@@ -413,8 +745,9 @@ bpf_code_generator::extract_relocations_and_maps(const bpf_code_generator::unsaf
     ELFIO::const_symbol_section_accessor symbols{reader, get_required_section(".symtab")};
 
     auto relocations = get_optional_section(".rel" + section_name);
-    if (!relocations)
+    if (!relocations) {
         relocations = get_optional_section(".rela" + section_name);
+    }
 
     if (relocations) {
         ELFIO::const_relocation_section_accessor relocation_reader{reader, relocations};
@@ -458,14 +791,14 @@ bpf_code_generator::extract_btf_information()
         return;
     }
 
-    std::vector<uint8_t> btf_data(
-        reinterpret_cast<const uint8_t*>(btf->get_data()),
-        reinterpret_cast<const uint8_t*>(btf->get_data()) + btf->get_size());
-    std::vector<uint8_t> btf_ext_data(
-        reinterpret_cast<const uint8_t*>(btf_ext->get_data()),
-        reinterpret_cast<const uint8_t*>(btf_ext->get_data()) + btf_ext->get_size());
+    std::vector<std::byte> btf_data(
+        reinterpret_cast<const std::byte*>(btf->get_data()),
+        reinterpret_cast<const std::byte*>(btf->get_data()) + btf->get_size());
+    std::vector<std::byte> btf_ext_data(
+        reinterpret_cast<const std::byte*>(btf_ext->get_data()),
+        reinterpret_cast<const std::byte*>(btf_ext->get_data()) + btf_ext->get_size());
 
-    btf_parse_line_information(
+    libbtf::btf_parse_line_information(
         btf_data,
         btf_ext_data,
         [&section_line_info = this->section_line_info](
@@ -491,16 +824,18 @@ bpf_code_generator::generate_labels()
         if (!IS_JMP_CLASS_OPCODE(output.instruction.opcode)) {
             continue;
         }
-        if (output.instruction.opcode == EBPF_OP_CALL) {
+        if (output.instruction.opcode == INST_OP_CALL) {
             continue;
         }
-        if (output.instruction.opcode == EBPF_OP_EXIT) {
+        if (output.instruction.opcode == INST_OP_EXIT) {
             continue;
         }
-        if ((i + output.instruction.offset + 1) >= program_output.size()) {
+        int32_t offset =
+            ((output.instruction.opcode == INST_OP_JA32) ? output.instruction.imm : output.instruction.offset);
+        if ((i + offset + 1) >= program_output.size()) {
             throw bpf_code_generator_exception("invalid jump target", i);
         }
-        program_output[i + output.instruction.offset + 1].jump_target = true;
+        program_output[i + offset + 1].jump_target = true;
     }
 
     // Add labels to instructions that are targets of jumps
@@ -521,7 +856,7 @@ bpf_code_generator::build_function_table()
     // Gather helper_functions
     size_t index = 0;
     for (auto& output : program_output) {
-        if (output.instruction.opcode != EBPF_OP_CALL) {
+        if (output.instruction.opcode != INST_OP_CALL) {
             continue;
         }
         bpf_code_generator::unsafe_string name;
@@ -550,18 +885,20 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
         auto& output = program_output[i];
         auto& inst = output.instruction;
 
-        switch (inst.opcode & EBPF_CLS_MASK) {
-        case EBPF_CLS_ALU:
-        case EBPF_CLS_ALU64: {
+        switch (inst.opcode & INST_CLS_MASK) {
+        case INST_CLS_ALU:
+        case INST_CLS_ALU64: {
             std::string destination = get_register_name(inst.dst);
             std::string source;
-            if (inst.opcode & EBPF_SRC_REG)
+            if (inst.opcode & INST_SRC_REG) {
                 source = get_register_name(inst.src);
-            else
+            } else {
                 source = "IMMEDIATE(" + std::to_string(inst.imm) + ")";
-            bool is64bit = (inst.opcode & EBPF_CLS_MASK) == EBPF_CLS_ALU64;
+            }
+            bool is64bit = (inst.opcode & INST_CLS_MASK) == INST_CLS_ALU64;
             AluOperations operation = static_cast<AluOperations>(inst.opcode >> 4);
             std::string swap_function;
+            std::string type;
             switch (operation) {
             case AluOperations::Add:
                 output.lines.push_back(std::format("{} += {};", destination, source));
@@ -573,16 +910,15 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 output.lines.push_back(std::format("{} *= {};", destination, source));
                 break;
             case AluOperations::Div:
-                if (is64bit)
-                    output.lines.push_back(
-                        std::format("{} = {} ? ({} / {}) : 0;", destination, source, destination, source));
-                else
+                if (is64bit) {
+                    type = (inst.offset == 1) ? "(int64_t)" : "";
                     output.lines.push_back(std::format(
-                        "{} = (uint32_t){} ? (uint32_t){} / (uint32_t){} : 0;",
-                        destination,
-                        source,
-                        destination,
-                        source));
+                        "{} = {} ? ({}{} / {}{}) : 0;", destination, source, type, destination, type, source));
+                } else {
+                    type = (inst.offset == 1) ? "(int32_t)" : "(uint32_t)";
+                    output.lines.push_back(std::format(
+                        "{} = (uint32_t){} ? {}{} / {}{} : 0;", destination, source, type, destination, type, source));
+                }
                 break;
             case AluOperations::Or:
                 output.lines.push_back(std::format("{} |= {};", destination, source));
@@ -591,46 +927,133 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 output.lines.push_back(std::format("{} &= {};", destination, source));
                 break;
             case AluOperations::Lsh:
-                output.lines.push_back(std::format("{} <<= {};", destination, source));
+                if (is64bit) {
+
+                    // Shifts of >= 64 bits on 64-bit values result in undefined behavior so mask off the msb of the
+                    // shift size, i.e., the 'source' in this case.
+                    // Note: The 'duplication' of the following two lines for the 32-bit variant is deliberate as this
+                    // allows the use of the (applicable) native size for the shift_mask variable, thus doing away with
+                    // 'casting' that would otherwise be required. This also makes the code more readable.
+                    uint64_t shift_mask = 0x3F;
+                    output.lines.push_back(std::format("{} <<= ({} & {});", destination, source, shift_mask));
+                } else {
+
+                    // Shifts of >= 32 bits on 32-bit values result in undefined behavior so mask off the msb of the
+                    // shift size, i.e., the 'source' in this case.
+                    uint32_t shift_mask = 0x1F;
+                    output.lines.push_back(std::format("{} <<= ({} & {});", destination, source, shift_mask));
+                }
                 break;
             case AluOperations::Rsh:
-                if (is64bit)
-                    output.lines.push_back(std::format("{} >>= {};", destination, source));
-                else
-                    output.lines.push_back(std::format("{} = (uint32_t){} >> {};", destination, destination, source));
+                if (is64bit) {
+
+                    // Shifts of >= 64 bits on 64-bit values result in undefined behavior so mask off the msb of the
+                    // shift size, i.e., the 'source' in this case.
+                    // Note: The 'duplication' of the following two lines for the 32-bit variant is deliberate as this
+                    // allows the use of the (applicable) native size for the shift_mask variable, thus doing away with
+                    // 'casting' that would otherwise be required. This also makes the code more readable.
+                    uint64_t shift_mask = 0x3F;
+                    output.lines.push_back(std::format("{} >>= ({} & {});", destination, source, shift_mask));
+                } else {
+
+                    // Shifts of >= 32 bits on 32-bit values result in undefined behavior so mask off the msb of the
+                    // shift size, i.e., the 'source' in this case.
+                    // The one 'uint32_t' cast here is required to truncate the destination register's initial value to
+                    // 32 bits prior to using it, given that this is a 32-bit rsh operation.
+                    uint32_t shift_mask = 0x1F;
+                    output.lines.push_back(std::format("{} = (uint32_t){};", destination, destination));
+                    output.lines.push_back(std::format("{} >>= ({} & {});", destination, source, shift_mask));
+                }
                 break;
             case AluOperations::Neg:
                 output.lines.push_back(std::format("{} = -(int64_t){};", destination, destination));
                 break;
             case AluOperations::Mod:
-                if (is64bit)
+                if (is64bit) {
+                    type = (inst.offset == 1) ? "(int64_t)" : "";
                     output.lines.push_back(std::format(
-                        "{} = {} ? ({} % {}): {} ;", destination, source, destination, source, destination));
-                else
-                    output.lines.push_back(std::format(
-                        "{} = (uint32_t){} ? ((uint32_t){} % (uint32_t){}) : (uint32_t){};",
+                        "{} = {} ? ({}{} % {}{}) : {}{};",
                         destination,
                         source,
+                        type,
                         destination,
+                        type,
                         source,
+                        type,
                         destination));
+                } else {
+                    type = (inst.offset == 1) ? "(int32_t)" : "(uint32_t)";
+                    output.lines.push_back(std::format(
+                        "{} = (uint32_t){} ? ({}{} % {}{}) : {}{};",
+                        destination,
+                        source,
+                        type,
+                        destination,
+                        type,
+                        source,
+                        type,
+                        destination));
+                }
                 break;
             case AluOperations::Xor:
                 output.lines.push_back(std::format("{} ^= {};", destination, source));
                 break;
             case AluOperations::Mov:
-                output.lines.push_back(std::format("{} = {};", destination, source));
+                type = (is64bit) ? "(uint64_t)(int64_t)" : "(uint32_t)(int32_t)";
+                switch (inst.offset) {
+                case 0:
+                    output.lines.push_back(std::format("{} = {};", destination, source));
+                    break;
+                case 8:
+                    output.lines.push_back(std::format("{} = {}(int8_t){};", destination, type, source));
+                    break;
+                case 16:
+                    output.lines.push_back(std::format("{} = {}(int16_t){};", destination, type, source));
+                    break;
+                case 32:
+                    output.lines.push_back(std::format("{} = {}(int32_t){};", destination, type, source));
+                    break;
+                default:
+                    throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
+                }
                 break;
-            case AluOperations::Ashr:
-                if (is64bit)
-                    output.lines.push_back(
-                        std::format("{} = (int64_t){} >> (uint32_t){};", destination, destination, source));
-                else
-                    output.lines.push_back(std::format("{} = (int32_t){} >> {};", destination, destination, source));
+            case AluOperations::Arsh:
+                if (is64bit) {
+                    uint64_t shift_mask = 0x3F;
+                    output.lines.push_back(std::format(
+                        "{} = (int64_t){} >> (uint32_t)({} & {});", destination, destination, source, shift_mask));
+                } else {
+                    uint32_t shift_mask = 0x1F;
+                    output.lines.push_back(std::format("{} = (int32_t){};", destination, destination));
+                    output.lines.push_back(std::format(
+                        "{} = (int32_t){} >> (uint32_t)({} & {});", destination, destination, source, shift_mask));
+                }
                 break;
             case AluOperations::ByteOrder: {
                 std::string size_type = "";
-                if (output.instruction.opcode & EBPF_SRC_REG) {
+                if ((inst.opcode & INST_CLS_MASK) == INST_CLS_ALU64) {
+                    if (output.instruction.opcode & INST_END_BE) {
+                        throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
+                    } else {
+                        switch (inst.imm) {
+                        case 16:
+                            swap_function = "swap16";
+                            size_type = "uint16_t";
+                            break;
+                        case 32:
+                            swap_function = "swap32";
+                            size_type = "uint32_t";
+                            break;
+                        case 64:
+                            is64bit = true;
+                            swap_function = "swap64";
+                            size_type = "uint64_t";
+                            break;
+                        default:
+                            throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
+                        }
+                    }
+                } else if (output.instruction.opcode & INST_END_BE) {
                     switch (inst.imm) {
                     case 16:
                         swap_function = "htobe16";
@@ -642,8 +1065,8 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                         break;
                     case 64:
                         is64bit = true;
-                        size_type = "uint64_t";
                         swap_function = "htobe64";
+                        size_type = "uint64_t";
                         break;
                     default:
                         throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
@@ -673,13 +1096,14 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
             default:
                 throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
             }
-            if (!is64bit)
+            if (!is64bit) {
                 output.lines.push_back(std::format("{} &= UINT32_MAX;", destination));
+            }
 
         } break;
-        case EBPF_CLS_LD: {
+        case INST_CLS_LD: {
             i++;
-            if (inst.opcode != EBPF_OP_LDDW) {
+            if (inst.opcode != INST_OP_LDDW_IMM) {
                 throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
             }
             if (i >= program_output.size()) {
@@ -705,30 +1129,32 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 current_section->referenced_map_indices.insert(map_definitions[output.relocation].index);
             }
         } break;
-        case EBPF_CLS_LDX: {
+        case INST_CLS_LDX: {
             std::string size_type;
             std::string destination = get_register_name(inst.dst);
             std::string source = get_register_name(inst.src);
             std::string offset = "OFFSET(" + std::to_string(inst.offset) + ")";
-            switch (inst.opcode & EBPF_SIZE_DW) {
-            case EBPF_SIZE_B:
+            switch (inst.opcode & INST_SIZE_DW) {
+            case INST_SIZE_B:
                 size_type = "uint8_t";
                 break;
-            case EBPF_SIZE_H:
+            case INST_SIZE_H:
                 size_type = "uint16_t";
                 break;
-            case EBPF_SIZE_W:
+            case INST_SIZE_W:
                 size_type = "uint32_t";
                 break;
-            case EBPF_SIZE_DW:
+            case INST_SIZE_DW:
                 size_type = "uint64_t";
                 break;
+            default:
+                throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
             }
             output.lines.push_back(
                 std::format("{} = *({}*)(uintptr_t)({} + {});", destination, size_type, source, offset));
         } break;
-        case EBPF_CLS_ST:
-        case EBPF_CLS_STX: {
+        case INST_CLS_ST:
+        case INST_CLS_STX: {
             std::string size_type;
             std::string lock_type;
             std::string size_num;
@@ -736,38 +1162,40 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
             std::string source;
             std::string raw_source;
             bool is_complex = false;
-            if ((inst.opcode & EBPF_CLS_MASK) == EBPF_CLS_ST) {
+            if ((inst.opcode & INST_CLS_MASK) == INST_CLS_ST) {
                 source = "IMMEDIATE(" + std::to_string(inst.imm) + ")";
             } else {
                 source = get_register_name(inst.src);
             }
             std::string offset = "OFFSET(" + std::to_string(inst.offset) + ")";
-            switch (inst.opcode & EBPF_SIZE_DW) {
-            case EBPF_SIZE_B:
+            switch (inst.opcode & INST_SIZE_DW) {
+            case INST_SIZE_B:
                 size_type = "uint8_t";
                 break;
-            case EBPF_SIZE_H:
+            case INST_SIZE_H:
                 size_type = "uint16_t";
                 break;
-            case EBPF_SIZE_W:
+            case INST_SIZE_W:
                 size_type = "uint32_t";
                 lock_type = "volatile long";
                 break;
-            case EBPF_SIZE_DW:
+            case INST_SIZE_DW:
                 size_num = "64";
                 size_type = "uint64_t";
                 lock_type = "volatile int64_t";
                 break;
+            default:
+                throw bpf_code_generator_exception("invalid operand", output.instruction_offset);
             }
             raw_source = source;
             source = "(" + size_type + ")" + source;
-            if ((inst.opcode & EBPF_MODE_MASK) == EBPF_MODE_ATOMIC) { // MODE_ATOMIC
+            if ((inst.opcode & INST_MODE_MASK) == EBPF_MODE_ATOMIC) {
                 auto line = std::string("");
                 switch (inst.imm) {
                 case EBPF_ATOMIC_ADD:
                 case EBPF_ATOMIC_ADD_FETCH:
                     line = std::format(
-                        "_InterlockedExchangeAdd{}(({}*)(uintptr_t)({} + {}), {});",
+                        "InterlockedExchangeAdd{}(({}*)(uintptr_t)({} + {}), {});",
                         size_num,
                         lock_type,
                         destination,
@@ -777,7 +1205,7 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 case EBPF_ATOMIC_OR:
                 case EBPF_ATOMIC_OR_FETCH:
                     line = std::format(
-                        "_InterlockedOr{}(({}*)(uintptr_t)({} + {}), {});",
+                        "InterlockedOr{}(({}*)(uintptr_t)({} + {}), {});",
                         size_num,
                         lock_type,
                         destination,
@@ -787,7 +1215,7 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 case EBPF_ATOMIC_AND:
                 case EBPF_ATOMIC_AND_FETCH:
                     line = std::format(
-                        "_InterlockedAnd{}(({}*)(uintptr_t)({} + {}), {});",
+                        "InterlockedAnd{}(({}*)(uintptr_t)({} + {}), {});",
                         size_num,
                         lock_type,
                         destination,
@@ -797,7 +1225,7 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 case EBPF_ATOMIC_XOR:
                 case EBPF_ATOMIC_XOR_FETCH:
                     line = std::format(
-                        "_InterlockedXor{}(({}*)(uintptr_t)({} + {}), {});",
+                        "InterlockedXor{}(({}*)(uintptr_t)({} + {}), {});",
                         size_num,
                         lock_type,
                         destination,
@@ -807,7 +1235,7 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 case EBPF_ATOMIC_XCHG:
                     is_complex = true;
                     line = std::format(
-                        "_InterlockedExchange{}(({}*)(uintptr_t)({} + {}), {});",
+                        "InterlockedExchange{}(({}*)(uintptr_t)({} + {}), {});",
                         size_num,
                         lock_type,
                         destination,
@@ -817,7 +1245,7 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 case EBPF_ATOMIC_CMPXCHG:
                     is_complex = true;
                     line = std::format(
-                        "r0 = ({})_InterlockedCompareExchange{}(({}*)(uintptr_t)({} + {}), {}, r0);",
+                        "r0 = ({})InterlockedCompareExchange{}(({}*)(uintptr_t)({} + {}), {}, r0);",
                         size_type,
                         size_num,
                         lock_type,
@@ -833,15 +1261,15 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 } else {
                     output.lines.push_back(line);
                 }
-            } else if ((inst.opcode & EBPF_MODE_MASK) == EBPF_MODE_MEM) {
+            } else if ((inst.opcode & INST_MODE_MASK) == EBPF_MODE_MEM) {
                 output.lines.push_back(
                     std::format("*({}*)(uintptr_t)({} + {}) = {};", size_type, destination, offset, source));
             } else {
-                throw bpf_code_generator_exception("invalid atomic mode", inst.opcode & EBPF_MODE_MASK);
+                throw bpf_code_generator_exception("invalid atomic mode", inst.opcode & INST_MODE_MASK);
             }
         } break;
-        case EBPF_CLS_JMP:
-        case EBPF_CLS_JMP32: {
+        case INST_CLS_JMP:
+        case INST_CLS_JMP32: {
             std::string destination = get_register_name(inst.dst);
             std::string destination_cast;
             if (IS_JMP32_CLASS_OPCODE(inst.opcode)) {
@@ -852,7 +1280,7 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
 
             std::string source;
             std::string source_cast;
-            if (inst.opcode & EBPF_SRC_REG) {
+            if (inst.opcode & INST_SRC_REG) {
                 source = get_register_name(inst.src);
                 if (IS_JMP32_CLASS_OPCODE(inst.opcode)) {
                     source_cast = IS_SIGNED_CMP_OPCODE(inst.opcode) ? "(int32_t)" : "(uint32_t)";
@@ -867,10 +1295,13 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
             }
 
             auto& format = _predicate_format_string[inst.opcode >> 4];
-            if (inst.opcode == EBPF_OP_JA) {
+            if (inst.opcode == INST_OP_JA16) {
                 std::string target = program_output[i + inst.offset + 1].label;
                 output.lines.push_back("goto " + target + ";");
-            } else if (inst.opcode == EBPF_OP_CALL) {
+            } else if (inst.opcode == INST_OP_JA32) {
+                std::string target = program_output[i + inst.imm + 1].label;
+                output.lines.push_back("goto " + target + ";");
+            } else if (inst.opcode == INST_OP_CALL) {
                 std::string function_name;
                 if (output.relocation.empty()) {
                     function_name = std::vformat(
@@ -892,7 +1323,7 @@ bpf_code_generator::encode_instructions(const bpf_code_generator::unsafe_string&
                 output.lines.push_back(
                     std::format("if (({}.tail_call) && ({} == 0))", function_name, get_register_name(0)));
                 output.lines.push_back(INDENT "return 0;");
-            } else if (inst.opcode == EBPF_OP_EXIT) {
+            } else if (inst.opcode == INST_OP_EXIT) {
                 output.lines.push_back("return " + get_register_name(0) + ";");
             } else {
                 std::string target = program_output[i + inst.offset + 1].label;
@@ -1113,12 +1544,15 @@ bpf_code_generator::emit_c_code(std::ostream& output_stream)
         auto& line_info = section_line_info[name];
         auto first_line_info = line_info.find(section.output.front().instruction_offset);
         std::string prolog_line_info;
-        if (first_line_info != line_info.end() && !first_line_info->second.file_name.empty()) {
+
+        auto result = std::find_if(line_info.begin(), line_info.end(), [&prolog_line_info](const auto& pair) {
+            if (pair.second.file_name.empty() || pair.second.line_number == 0) {
+                return false;
+            }
             prolog_line_info = std::format(
-                "#line {} {}\n",
-                std::to_string(first_line_info->second.line_number),
-                first_line_info->second.file_name.quoted_filename());
-        }
+                "#line {} {}\n", std::to_string(pair.second.line_number), pair.second.file_name.quoted_filename());
+            return true;
+        });
 
         // Emit entry point
         output_stream << "#pragma code_seg(push, " << section.pe_section_name.quoted() << ")" << std::endl;
@@ -1146,8 +1580,9 @@ bpf_code_generator::emit_c_code(std::ostream& output_stream)
             if (output.lines.empty()) {
                 continue;
             }
-            if (!output.label.empty())
+            if (!output.label.empty()) {
                 output_stream << output.label << ":" << std::endl;
+            }
             auto current_line = line_info.find(output.instruction_offset);
             if (current_line != line_info.end() && !current_line->second.file_name.empty() &&
                 current_line->second.line_number != 0) {
@@ -1206,6 +1641,15 @@ bpf_code_generator::emit_c_code(std::ostream& output_stream)
             if (program.program_info_hash.has_value()) {
                 output_stream << INDENT INDENT << program_info_hash_name << "," << std::endl;
                 output_stream << INDENT INDENT << program.program_info_hash.value().size() << "," << std::endl;
+                // Append the hash type
+                std::string hash_string = program.program_info_hash_type;
+                if (hash_string.empty()) {
+                    // If the hash type is not known, use the default hash type.
+                    hash_string = EBPF_HASH_ALGORITHM;
+                    program.program_info_hash_type = hash_string;
+                }
+                output_stream << INDENT INDENT << "\"" << hash_string << "\""
+                              << "," << std::endl;
             }
             output_stream << INDENT "}," << std::endl;
         }
@@ -1226,13 +1670,9 @@ bpf_code_generator::emit_c_code(std::ostream& output_stream)
     output_stream << "}" << std::endl;
     output_stream << std::endl;
 
-    std::istringstream version_stream(EBPF_VERSION);
-    std::string version_major;
-    std::string version_minor;
-    std::string version_revision;
-    std::getline(version_stream, version_major, '.');
-    std::getline(version_stream, version_minor, '.');
-    std::getline(version_stream, version_revision, '.');
+    std::string version_major = std::to_string(EBPF_VERSION_MAJOR);
+    std::string version_minor = std::to_string(EBPF_VERSION_MINOR);
+    std::string version_revision = std::to_string(EBPF_VERSION_REVISION);
 
     output_stream << "static void" << std::endl
                   << "_get_version(_Out_ bpf2c_version_t* version)" << std::endl
@@ -1243,8 +1683,57 @@ bpf_code_generator::emit_c_code(std::ostream& output_stream)
                   << "}" << std::endl
                   << std::endl;
 
+    if (!map_initial_values.empty()) {
+        output_stream << "#pragma data_seg(push, \"map_initial_values\")" << std::endl;
+        for (const auto& [name, map_values] : map_initial_values) {
+            std::string map_name = name.c_identifier();
+            std::string map_initial_values_name = "_" + map_name + "_initial_string_table[]";
+            output_stream << "static const char* " << map_initial_values_name << " = {" << std::endl;
+            for (const auto& value : map_values) {
+                if (value.empty()) {
+                    output_stream << INDENT << "NULL," << std::endl;
+                } else {
+                    output_stream << INDENT << value.quoted() << "," << std::endl;
+                }
+            }
+            output_stream << "};" << std::endl;
+            output_stream << std::endl;
+        }
+
+        // Emit a static array of map_initial_values_t for each map.
+        output_stream << "static map_initial_values_t _map_initial_values_array[] = {" << std::endl;
+        for (const auto& [name, values] : map_initial_values) {
+            output_stream << INDENT "{" << std::endl;
+            output_stream << INDENT INDENT << ".name = " << name.quoted() << "," << std::endl;
+            output_stream << INDENT INDENT << ".count = " << values.size() << "," << std::endl;
+            output_stream << INDENT INDENT << ".values = "
+                          << "_" << name.c_identifier() << "_initial_string_table"
+                          << "," << std::endl;
+            output_stream << INDENT "}," << std::endl;
+        }
+        output_stream << "};" << std::endl;
+        output_stream << "#pragma data_seg(pop)" << std::endl;
+        output_stream << std::endl;
+    }
+
+    // Emit _get_map_initial_values function.
+    output_stream << "static void" << std::endl
+                  << "_get_map_initial_values(_Outptr_result_buffer_(*count) map_initial_values_t** "
+                     "map_initial_values, _Out_ size_t* count)"
+                  << std::endl;
+    output_stream << "{" << std::endl;
+    if (map_initial_values.size() != 0) {
+        output_stream << INDENT "*map_initial_values = _map_initial_values_array;" << std::endl;
+    } else {
+        output_stream << INDENT "*map_initial_values = NULL;" << std::endl;
+    }
+    output_stream << INDENT "*count = " << std::to_string(map_initial_values.size()) << ";" << std::endl;
+    output_stream << "}" << std::endl;
+    output_stream << std::endl;
+
     std::string meta_data_table = "metadata_table_t " + c_name.c_identifier() + "_metadata_table = {";
-    meta_data_table += "sizeof(metadata_table_t), _get_programs, _get_maps, _get_hash, _get_version};\n";
+    meta_data_table +=
+        "sizeof(metadata_table_t), _get_programs, _get_maps, _get_hash, _get_version, _get_map_initial_values};\n";
 
     if ((meta_data_table.size() - 1) > LINE_BREAK_WIDTH) {
         meta_data_table.insert(meta_data_table.find_first_of("{") + 1, "\n" INDENT);

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation
 // SPDX-License-Identifier: MIT
 
+#define EBPF_FILE_ID EBPF_FILE_ID_CORE_HELPER_FUZZER
+
 #include "ebpf_core.h"
 #include "ebpf_handle.h"
 #include "ebpf_object.h"
@@ -175,21 +177,21 @@ class fuzz_wrapper
             type,
             type,
             {reinterpret_cast<uint8_t*>(program_name.data()), program_name.size()},
-            {reinterpret_cast<uint8_t*>(file.data()), file.size()},
             {reinterpret_cast<uint8_t*>(section.data()), section.size()},
+            {reinterpret_cast<uint8_t*>(file.data()), file.size()},
             EBPF_CODE_JIT};
 
         if (ebpf_program_create_and_initialize(&params, &program_handle) == EBPF_SUCCESS) {
             handles.push_back(program_handle);
         }
         for (const auto& [name, def] : _map_definitions) {
-            ebpf_utf8_string_t utf8_name{reinterpret_cast<uint8_t*>(const_cast<char*>(name.data())), name.size()};
+            cxplat_utf8_string_t utf8_name{reinterpret_cast<uint8_t*>(const_cast<char*>(name.data())), name.size()};
             ebpf_handle_t handle;
             if (ebpf_core_create_map(&utf8_name, &def, ebpf_handle_invalid, &handle) == EBPF_SUCCESS) {
                 handles.push_back(handle);
 
                 ebpf_map_t* map = NULL;
-                if (ebpf_object_reference_by_handle(handle, EBPF_OBJECT_MAP, (ebpf_core_object_t**)&map) ==
+                if (EBPF_OBJECT_REFERENCE_BY_HANDLE(handle, EBPF_OBJECT_MAP, (ebpf_core_object_t**)&map) ==
                     EBPF_SUCCESS) {
                     maps[def.type] = map;
                     if (def.type == BPF_MAP_TYPE_PROG_ARRAY) {
@@ -202,7 +204,7 @@ class fuzz_wrapper
     ~fuzz_wrapper()
     {
         for (auto& [_, map] : maps) {
-            ebpf_object_release_reference((ebpf_core_object_t*)map);
+            EBPF_OBJECT_RELEASE_REFERENCE((ebpf_core_object_t*)map);
         }
         for (auto& handle : handles) {
             // Ignore invalid handle close.
@@ -297,7 +299,8 @@ fuzz_program(
         // No such helper id.
         return;
     }
-    ebpf_helper_function_prototype_t* prototype = &program_info->program_type_specific_helper_prototype[helper_index];
+    const ebpf_helper_function_prototype_t* prototype =
+        &program_info->program_type_specific_helper_prototype[helper_index];
 
     // Get the helper function pointer.
     ebpf_helper_id_t helper_function_id = (ebpf_helper_id_t)prototype->helper_id;
@@ -314,7 +317,7 @@ fuzz_program(
     xdp_md_helper_t xdp_helper(packet);
     char writable_buffer[MAX_BUFFER_SIZE] = {0};
     int readable_buffer_index = 0;
-    char readable_buffer[2][MAX_BUFFER_SIZE];
+    char readable_buffer[5][MAX_BUFFER_SIZE];
     char map_key[MAX_BUFFER_SIZE];
     char map_value[MAX_BUFFER_SIZE];
     ebpf_map_type_t map_type = BPF_MAP_TYPE_UNSPEC;
@@ -439,6 +442,12 @@ fuzz_program(
             // Put a pointer to the writable buffer into the argument.
             argument[arg_count] = (uint64_t)writable_buffer;
             break;
+        case EBPF_ARGUMENT_TYPE_DONTCARE:
+            argument[arg_count] = (uint64_t)readable_buffer[readable_buffer_index++];
+            break;
+        case EBPF_ARGUMENT_TYPE_UNSUPPORTED:
+            // Unsupported argument type.
+            break;
         }
         arg_count++;
     }
@@ -473,21 +482,28 @@ fuzz_program(
 
 FUZZ_EXPORT int __cdecl LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
-    // Get the program.
+    ebpf_watchdog_timer_t watchdog_timer;
+
+    // Initialize the core platform.
     fuzz_wrapper fuzz_state;
-    netebpf_ext_helper_t helper;
+
+    // Initialize netebpfext. Pass false since we handle the core platform itself,
+    // to avoid deadlocks on cleanup.
+    netebpf_ext_helper_t helper(false);
+
+    // Get the program.
     fuzz_state.make_program(EBPF_PROGRAM_TYPE_XDP);
     ebpf_handle_t program_handle = fuzz_state.get_program_handle();
     ebpf_program_t* program = NULL;
     ebpf_result_t result =
-        ebpf_object_reference_by_handle(program_handle, EBPF_OBJECT_PROGRAM, (ebpf_core_object_t**)&program);
+        EBPF_OBJECT_REFERENCE_BY_HANDLE(program_handle, EBPF_OBJECT_PROGRAM, (ebpf_core_object_t**)&program);
     if (result != EBPF_SUCCESS) {
         return 0;
     }
 
     fuzz_program(fuzz_state, program_handle, program, data, size);
 
-    ebpf_object_release_reference((ebpf_core_object_t*)program);
+    EBPF_OBJECT_RELEASE_REFERENCE((ebpf_core_object_t*)program);
 
     return 0; // Non-zero return values are reserved for future use.
 }

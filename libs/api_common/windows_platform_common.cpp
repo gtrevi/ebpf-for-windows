@@ -8,8 +8,8 @@
 #include "ebpf_api.h"
 #include "ebpf_nethooks.h"
 #include "ebpf_protocol.h"
-#include "ebpf_registry_helper.h"
 #include "ebpf_serialize.h"
+#include "ebpf_store_helper.h"
 #include "helpers.hpp"
 #include "map_descriptors.hpp"
 #include "platform.hpp"
@@ -20,6 +20,7 @@
 #include "windows_program_type.h"
 
 #include <cassert>
+#include <mutex>
 #include <stdexcept>
 
 #define GET_PROGRAM_INFO_REPLY_BUFFER_SIZE 2048
@@ -108,9 +109,13 @@ static thread_local std::map<ebpf_program_type_t, ebpf_program_descriptor_ptr_t,
 
 // Global cache for the program and section information queried from eBPF store.
 typedef std::unique_ptr<ebpf_section_definition_t, _ebpf_section_info_deleter> ebpf_section_info_ptr_t;
+std::unique_ptr<std::once_flag> _windows_program_information_init_flag = std::make_unique<std::once_flag>();
 static std::map<ebpf_program_type_t, ebpf_program_descriptor_ptr_t, guid_compare> _windows_program_types;
 static std::vector<ebpf_section_info_ptr_t> _windows_section_definitions;
 static std::map<ebpf_program_type_t, ebpf_program_info_ptr_t, guid_compare> _windows_program_information;
+
+static void
+_load_ebpf_provider_data();
 
 void
 set_program_under_verification(ebpf_handle_t program)
@@ -132,7 +137,7 @@ _get_program_descriptor_from_info(_In_ const ebpf_program_info_t* info, _Outptr_
             goto Exit;
         }
 
-        name = ebpf_duplicate_string(info->program_type_descriptor.name);
+        name = cxplat_duplicate_string(info->program_type_descriptor.name);
         if (name == nullptr) {
             result = EBPF_NO_MEMORY;
             goto Exit;
@@ -185,16 +190,18 @@ _get_program_info_data(ebpf_program_type_t program_type, _Outptr_ ebpf_program_i
 
     auto reply = reinterpret_cast<ebpf_operation_get_program_info_reply_t*>(reply_buffer.data());
     ebpf_result_t result = win32_error_code_to_ebpf_result(invoke_ioctl(request, reply_buffer));
-    if ((result != EBPF_SUCCESS) && (result != EBPF_INSUFFICIENT_BUFFER))
+    if ((result != EBPF_SUCCESS) && (result != EBPF_INSUFFICIENT_BUFFER)) {
         goto Exit;
+    }
 
     if (result == EBPF_INSUFFICIENT_BUFFER) {
         required_buffer_length = reply->header.length;
         reply_buffer.resize(required_buffer_length);
         reply = reinterpret_cast<ebpf_operation_get_program_info_reply_t*>(reply_buffer.data());
         result = win32_error_code_to_ebpf_result(invoke_ioctl(request, reply_buffer));
-        if (result != EBPF_SUCCESS)
+        if (result != EBPF_SUCCESS) {
             goto Exit;
+        }
     }
 
     if (reply->header.id != ebpf_operation_id_t::EBPF_OPERATION_GET_PROGRAM_INFO) {
@@ -213,6 +220,8 @@ const EbpfProgramType&
 get_program_type_windows(const GUID& program_type)
 {
     ebpf_result_t result;
+
+    _load_ebpf_provider_data();
 
     // See if we have the descriptor in the thread local cache.
     auto it = _program_descriptor_cache.find(program_type);
@@ -273,6 +282,8 @@ _get_section_definition(const std::string& section)
 _Ret_maybenull_ const ebpf_program_type_t*
 get_ebpf_program_type(bpf_prog_type_t bpf_program_type)
 {
+    _load_ebpf_provider_data();
+
     for (auto const& [key, value] : _windows_program_information) {
         if (value.get()->program_type_descriptor.bpf_prog_type == (uint32_t)bpf_program_type) {
             return &key;
@@ -285,6 +296,8 @@ get_ebpf_program_type(bpf_prog_type_t bpf_program_type)
 _Ret_maybenull_ const ebpf_attach_type_t*
 get_ebpf_attach_type(bpf_attach_type_t bpf_attach_type) noexcept
 {
+    _load_ebpf_provider_data();
+
     for (const auto& definition : _windows_section_definitions) {
         if (definition.get()->bpf_attach_type == bpf_attach_type) {
             return definition.get()->attach_type;
@@ -297,6 +310,8 @@ get_ebpf_attach_type(bpf_attach_type_t bpf_attach_type) noexcept
 bpf_prog_type_t
 get_bpf_program_type(_In_ const ebpf_program_type_t* ebpf_program_type) noexcept
 {
+    _load_ebpf_provider_data();
+
     for (auto const& [key, value] : _windows_program_information) {
         if (IsEqualGUID(*ebpf_program_type, key)) {
             return (bpf_prog_type_t)value.get()->program_type_descriptor.bpf_prog_type;
@@ -309,6 +324,8 @@ get_bpf_program_type(_In_ const ebpf_program_type_t* ebpf_program_type) noexcept
 bpf_attach_type_t
 get_bpf_attach_type(_In_ const ebpf_attach_type_t* ebpf_attach_type) noexcept
 {
+    _load_ebpf_provider_data();
+
     for (const auto& definition : _windows_section_definitions) {
         if (IsEqualGUID(*ebpf_attach_type, *definition.get()->attach_type)) {
             return definition.get()->bpf_attach_type;
@@ -323,6 +340,7 @@ get_bpf_program_and_attach_type(
     const std::string& section, _Out_ bpf_prog_type_t* program_type, _Out_ bpf_attach_type_t* attach_type)
 {
     ebpf_result_t result = EBPF_SUCCESS;
+    _load_ebpf_provider_data();
 
     const ebpf_section_definition_t* definition = _get_section_definition(section);
     if (definition == nullptr) {
@@ -342,6 +360,7 @@ get_program_and_attach_type(
     const std::string& section, _Out_ ebpf_program_type_t* program_type, _Out_ ebpf_attach_type_t* attach_type)
 {
     ebpf_result_t result = EBPF_SUCCESS;
+    _load_ebpf_provider_data();
 
     const ebpf_section_definition_t* definition = _get_section_definition(section);
     if (definition == nullptr) {
@@ -363,6 +382,8 @@ get_program_type_windows(const std::string& section, const std::string&)
     const ebpf_program_type_t* global_program_type = get_global_program_type();
     ebpf_program_type_t program_type;
     ebpf_attach_type_t attach_type;
+
+    _load_ebpf_provider_data();
 
     if (global_program_type == nullptr) {
         // Global program type is not set. Find the program type from the section prefixes.
@@ -393,7 +414,7 @@ get_program_type_windows(const std::string& section, const std::string&)
         return get_program_type_windows(*global_program_type);
     } catch (...) {
         if (!get_verification_in_progress()) {
-            return windows_unspecified_program_type;
+            return PTYPE("unspec", {0}, (uint64_t)&EBPF_PROGRAM_TYPE_UNSPECIFIED, {});
         } else {
             if (global_program_type_found) {
                 auto guid_string = guid_to_string(global_program_type);
@@ -445,6 +466,8 @@ get_map_descriptor_windows(int original_fd)
 const ebpf_attach_type_t*
 get_attach_type_windows(const std::string& section)
 {
+    _load_ebpf_provider_data();
+
     const ebpf_section_definition_t* definition = _get_section_definition(section);
     if (definition != nullptr) {
         return definition->attach_type;
@@ -456,6 +479,8 @@ get_attach_type_windows(const std::string& section)
 _Ret_maybenull_z_ const char*
 get_attach_type_name(_In_ const ebpf_attach_type_t* attach_type)
 {
+    _load_ebpf_provider_data();
+
     for (const auto& t : _windows_section_definitions) {
         if (IsEqualGUID(*t.get()->attach_type, *attach_type)) {
             return t.get()->section_prefix;
@@ -506,7 +531,7 @@ _update_global_helpers_for_program_information(
         for (uint32_t i = 0; i < global_helper_count; i++) {
             new_helpers[i] = global_helpers[i];
             new_helpers[i].name = nullptr;
-            auto name = ebpf_duplicate_string(global_helpers[i].name);
+            auto name = cxplat_duplicate_string(global_helpers[i].name);
             if (name == nullptr) {
                 result = EBPF_NO_MEMORY;
                 goto Exit;
@@ -520,7 +545,7 @@ _update_global_helpers_for_program_information(
                 new_helpers + global_helper_count,
                 program_info->program_type_specific_helper_prototype,
                 (program_info->count_of_program_type_specific_helpers * sizeof(ebpf_helper_function_prototype_t)));
-            ebpf_free(program_info->program_type_specific_helper_prototype);
+            ebpf_free((void*)program_info->program_type_specific_helper_prototype);
         }
 
         program_info->program_type_specific_helper_prototype = new_helpers;
@@ -607,8 +632,8 @@ _load_all_section_data_information()
     try {
         for (uint32_t index = 0; index < section_info_count; index++) {
             ebpf_section_definition_t* info = section_info[index];
-            _windows_section_definitions.emplace_back(ebpf_section_info_ptr_t(info));
             section_info[index] = nullptr;
+            _windows_section_definitions.emplace_back(ebpf_section_info_ptr_t(info));
         }
     } catch (const std::bad_alloc&) {
         result = EBPF_NO_MEMORY;
@@ -650,9 +675,9 @@ _load_all_program_data_information()
     try {
         for (uint32_t index = 0; index < program_info_count; index++) {
             ebpf_program_info_t* info = program_info[index];
+            program_info[index] = nullptr;
             ebpf_program_type_t program_type = info->program_type_descriptor.program_type;
             _windows_program_information[program_type] = ebpf_program_info_ptr_t(info);
-            program_info[index] = nullptr;
 
             EbpfProgramType* program_data = nullptr;
             result = _get_program_descriptor_from_info(info, &program_data);
@@ -682,26 +707,36 @@ Exit:
     return result;
 }
 
-_Must_inspect_result_ ebpf_result_t
-load_ebpf_provider_data()
+/**
+ * @brief This function loads all the program information from the store.
+ * It is relatively expensive and should be called only when needed instead
+ * of when DllMain is invoked. It is idempotent and multi-thread safe.
+ */
+static void
+_load_ebpf_provider_data()
 {
-    ebpf_result_t result = _load_all_program_data_information();
-    if (result != EBPF_SUCCESS) {
-        goto Exit;
-    }
+    try {
+        std::call_once(*_windows_program_information_init_flag, [] {
+            ebpf_result_t result = _load_all_program_data_information();
+            if (result != EBPF_SUCCESS) {
+                throw std::runtime_error("Failed to load program information from eBPF store.");
+            }
 
-    result = _load_all_section_data_information();
-    if (result != EBPF_SUCCESS) {
-        goto Exit;
-    }
+            result = _load_all_section_data_information();
+            if (result != EBPF_SUCCESS) {
+                throw std::runtime_error("Failed to load section information from eBPF store.");
+            }
 
-    result = _load_all_global_helper_information();
-    if (result != EBPF_SUCCESS) {
-        goto Exit;
+            result = _load_all_global_helper_information();
+            if (result != EBPF_SUCCESS) {
+                throw std::runtime_error("Failed to load global helper information from eBPF store.");
+            }
+        });
+    } catch (...) {
+        _windows_program_types.clear();
+        _windows_section_definitions.clear();
+        _windows_program_information.clear();
     }
-
-Exit:
-    return result;
 }
 
 void
@@ -710,6 +745,9 @@ clear_ebpf_provider_data()
     _windows_program_types.clear();
     _windows_section_definitions.clear();
     _windows_program_information.clear();
+
+    // Reset the flag so that the data is reloaded when needed.
+    _windows_program_information_init_flag = std::make_unique<std::once_flag>();
 }
 
 _Ret_maybenull_ static const ebpf_program_info_t*
@@ -730,6 +768,8 @@ _Success_(return == EBPF_SUCCESS) ebpf_result_t get_program_type_info(_Outptr_ c
     ebpf_result_t result = EBPF_SUCCESS;
     ebpf_program_info_t* program_info;
     bool fall_back = false;
+
+    _load_ebpf_provider_data();
 
     // See if we already have the program info cached.
     auto it = _program_info_cache.find(*program_type);

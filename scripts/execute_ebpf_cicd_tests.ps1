@@ -1,12 +1,18 @@
 ﻿# Copyright (c) Microsoft Corporation
 # SPDX-License-Identifier: MIT
 
-param ([parameter(Mandatory=$false)][string] $AdminTarget = "TEST_VM",
-       [parameter(Mandatory=$false)][string] $StandardUserTarget = "TEST_VM_STANDARD",
-       [parameter(Mandatory=$false)][string] $LogFileName = "TestLog.log",
-       [parameter(Mandatory=$false)][string] $WorkingDirectory = $pwd.ToString(),
-       [parameter(Mandatory=$false)][string] $TestExecutionJsonFileName = "test_execution.json",
-       [parameter(Mandatory=$false)][bool] $Coverage = $true)
+param ([parameter(Mandatory = $false)][string] $AdminTarget = "TEST_VM",
+       [parameter(Mandatory = $false)][string] $StandardUserTarget = "TEST_VM_STANDARD",
+       [parameter(Mandatory = $false)][string] $LogFileName = "TestLog.log",
+       [parameter(Mandatory = $false)][string] $WorkingDirectory = $pwd.ToString(),
+       [parameter(Mandatory = $false)][string] $TestExecutionJsonFileName = "test_execution.json",
+       [parameter(Mandatory = $false)][bool] $Coverage = $false,
+       [parameter(Mandatory = $false)][string] $TestMode = "CI/CD",
+       [parameter(Mandatory = $false)][string[]] $Options = @("None"),
+       [parameter(Mandatory = $false)][string] $SelfHostedRunnerName,
+       [parameter(Mandatory = $false)][int] $TestHangTimeout = 3600,
+       [parameter(Mandatory = $false)][string] $UserModeDumpFolder = "C:\Dumps"
+)
 
 Push-Location $WorkingDirectory
 
@@ -14,27 +20,66 @@ $AdminTestVMCredential = Get-StoredCredential -Target $AdminTarget -ErrorAction 
 $StandardUserTestVMCredential = Get-StoredCredential -Target $StandardUserTarget -ErrorAction Stop
 
 # Load other utility modules.
-Import-Module .\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
-Import-Module .\vm_run_tests.psm1  -Force -ArgumentList ($AdminTestVMCredential.UserName, $AdminTestVMCredential.Password, $StandardUserTestVMCredential.UserName, $StandardUserTestVMCredential.Password, $WorkingDirectory, $LogFileName) -WarningAction SilentlyContinue
+Import-Module $PSScriptRoot\common.psm1 -Force -ArgumentList ($LogFileName) -WarningAction SilentlyContinue
+Import-Module $PSScriptRoot\vm_run_tests.psm1 `
+    -Force `
+    -ArgumentList (
+        $AdminTestVMCredential.UserName,
+        $AdminTestVMCredential.Password,
+        $StandardUserTestVMCredential.UserName,
+        $StandardUserTestVMCredential.Password,
+        $WorkingDirectory,
+        $LogFileName,
+        $TestHangTimeout,
+        $UserModeDumpFolder) `
+    -WarningAction SilentlyContinue
 
 # Read the test execution json.
 $Config = Get-Content ("{0}\{1}" -f $PSScriptRoot, $TestExecutionJsonFileName) | ConvertFrom-Json
-$BasicTest = $Config.BasicTest
+$VMList = $Config.VMMap.$SelfHostedRunnerName
 
 # Run tests on test VMs.
-foreach ($VM in $BasicTest) {
-    Invoke-CICDTestsOnVM -VMName $VM.Name -Coverage $Coverage
+foreach ($VM in $VMList) {
+    Invoke-CICDTestsOnVM `
+        -VMName $VM.Name `
+        -Coverage $Coverage `
+        -TestMode $TestMode `
+        -TestHangTimeout $TestHangTimeout `
+        -UserModeDumpFolder $UserModeDumpFolder `
+        -Options $Options
 }
 
-# Run XDP Tests.
-Invoke-XDPTestsOnVM $Config.MultiVMTest
+# This script is used to execute the various kernel mode tests. The required behavior is selected by the $TestMode
+# parameter.
+if ($TestMode -eq "CI/CD") {
 
-# Run Connect Redirect Tests.
-Invoke-ConnectRedirectTestsOnVM $Config.MultiVMTest $Config.ConnectRedirectTest -UserType "Administrator"
-Invoke-ConnectRedirectTestsOnVM $Config.MultiVMTest $Config.ConnectRedirectTest -UserType "StandardUser"
+    # Run XDP Tests.
+    Invoke-XDPTestsOnVM `
+        -Interfaces $Config.Interfaces `
+        -VMName $VMList[0].Name `
+        -TestHangTimeout $TestHangTimeout `
+        -UserModeDumpFolder $UserModeDumpFolder
+
+    # Run Connect Redirect Tests.
+    Invoke-ConnectRedirectTestsOnVM `
+        -Interfaces $Config.Interfaces `
+        -ConnectRedirectTestConfig $Config.ConnectRedirectTest `
+        -UserType "Administrator" `
+        -VMName $VMList[0].Name `
+        -TestHangTimeout $TestHangTimeout `
+        -UserModeDumpFolder $UserModeDumpFolder
+
+    Invoke-ConnectRedirectTestsOnVM `
+        -Interfaces $Config.Interfaces `
+        -ConnectRedirectTestConfig $Config.ConnectRedirectTest `
+        -UserType "StandardUser" `
+        -VMName $VMList[0].Name `
+        -TestHangTimeout $TestHangTimeout `
+        -UserModeDumpFolder $UserModeDumpFolder
+}
 
 # Stop eBPF components on test VMs.
-foreach ($VM in $Config.MultiVMTest) {
+foreach ($VM in $VMList) {
     Stop-eBPFComponentsOnVM -VMName $VM.Name
 }
 

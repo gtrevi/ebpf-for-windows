@@ -10,14 +10,17 @@
 
 #include "ebpf_windows.h"
 
-#if !defined(NO_CRT)
+#if !defined(NO_CRT) && !defined(_NO_CRT_STDIO_INLINE)
 #include <stdbool.h>
 #include <stdint.h>
 #else
 typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
 #endif
+
+#define MAX_TAIL_CALL_CNT 33
 
 #define BPF_ENUM_TO_STRING(X) #X
 
@@ -84,19 +87,19 @@ typedef enum ebpf_map_option
     EBPF_EXIST    ///< Update an existing element.
 } ebpf_map_option_t;
 
+/**
+ * @brief Pinning type for eBPF objects. The values should match the
+ * LIBBPF_PIN_* pin types defined in libbpf.
+ */
 typedef enum ebpf_pin_type
 {
-    PIN_NONE,      ///< Object is not pinned.
-    PIN_OBJECT_NS, ///< Pinning that is local to an object.
-    PIN_GLOBAL_NS, ///< Pinning with a global namespace.
-    PIN_CUSTOM_NS  ///< Pinning with a custom path given as section parameter.
+    LIBBPF_PIN_NONE = 0, ///< Object is not pinned.
+    LIBBPF_PIN_BY_NAME,  ///< Pinning with a global namespace.
 } ebpf_pin_type_t;
 
 static const char* const _ebpf_pin_type_names[] = {
-    BPF_ENUM_TO_STRING(PIN_NONE),
-    BPF_ENUM_TO_STRING(PIN_OBJECT_NS),
-    BPF_ENUM_TO_STRING(PIN_GLOBAL_NS),
-    BPF_ENUM_TO_STRING(PIN_CUSTOM_NS),
+    BPF_ENUM_TO_STRING(LIBBPF_PIN_NONE),
+    BPF_ENUM_TO_STRING(LIBBPF_PIN_BY_NAME),
 };
 
 typedef uint32_t ebpf_id_t;
@@ -163,6 +166,10 @@ typedef enum
     BPF_FUNC_get_current_pid_tgid = 19,      ///< \ref bpf_get_current_pid_tgid
     BPF_FUNC_get_current_logon_id = 20,      ///< \ref bpf_get_current_logon_id
     BPF_FUNC_is_current_admin = 21,          ///< \ref bpf_is_current_admin
+    BPF_FUNC_memcpy = 22,                    ///< \ref bpf_memcpy
+    BPF_FUNC_memcmp = 23,                    ///< \ref bpf_memcmp
+    BPF_FUNC_memset = 24,                    ///< \ref bpf_memset
+    BPF_FUNC_memmove = 25,                   ///< \ref bpf_memmove
 } ebpf_helper_id_t;
 
 // Cross-platform BPF program types.
@@ -214,6 +221,16 @@ enum bpf_prog_type
      * **Helpers available:** all helpers defined in bpf_helpers.h
      */
     BPF_PROG_TYPE_SOCK_OPS,
+
+    /** @brief Program type for handling incoming packets as early as possible.
+     *
+     * **eBPF program prototype:** \ref xdp_hook_t
+     *
+     * **Attach type(s):** \ref BPF_XDP_TEST
+     *
+     * **Helpers available:** all helpers defined in bpf_helpers.h
+     */
+    BPF_PROG_TYPE_XDP_TEST = 998,
 
     /** @brief Program type for handling calls from the eBPF sample extension. Used for
      * testing.
@@ -300,6 +317,12 @@ enum bpf_attach_type
      * **Program type:** \ref BPF_PROG_TYPE_SAMPLE
      */
     BPF_ATTACH_TYPE_SAMPLE,
+
+    /** @brief Attach type for handling incoming packets as early as possible.
+     *
+     * **Program type:** \ref BPF_PROG_TYPE_XDP_TEST
+     */
+    BPF_XDP_TEST,
 
     __MAX_BPF_ATTACH_TYPE,
 };

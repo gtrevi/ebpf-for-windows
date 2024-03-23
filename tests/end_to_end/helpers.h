@@ -3,11 +3,13 @@
 #pragma once
 
 #include "ebpf_api.h"
+#include "ebpf_extension_uuids.h"
 #include "ebpf_nethooks.h"
 #include "ebpf_platform.h"
 #include "ebpf_program_types.h"
 #include "net_ebpf_ext_program_info.h"
 #include "sample_ext_program_info.h"
+#include "usersim/ke.h"
 
 // We need the NET_BUFFER typedefs without the other NT kernel defines that
 // ndis.h might pull in and conflict with user-mode headers.
@@ -32,17 +34,21 @@ typedef struct _ebpf_free_memory
 
 typedef std::unique_ptr<uint8_t, ebpf_free_memory_t> ebpf_memory_t;
 
-extern bool _ebpf_platform_is_preemptible;
-
-#ifdef __cplusplus
-extern "C"
+typedef struct _close_bpf_link
 {
-#endif
-    extern GUID ebpf_program_information_extension_interface_id;
-    extern GUID ebpf_hook_extension_interface_id;
-#ifdef __cplusplus
-}
-#endif
+    void
+    operator()(_In_opt_ _Post_invalid_ bpf_link* link)
+    {
+        if (link != nullptr) {
+            if (ebpf_link_detach(link) != EBPF_SUCCESS) {
+                throw std::runtime_error("ebpf_link_detach failed");
+            }
+            ebpf_link_close(link);
+        }
+    }
+} close_bpf_link_t;
+
+typedef std::unique_ptr<bpf_link, close_bpf_link_t> bpf_link_ptr;
 
 typedef class _emulate_dpc
 {
@@ -51,17 +57,18 @@ typedef class _emulate_dpc
     {
         uintptr_t new_thread_affinity_mask = 1ull << cpu_id;
         ebpf_assert_success(ebpf_set_current_thread_affinity(new_thread_affinity_mask, &old_thread_affinity_mask));
-        _ebpf_platform_is_preemptible = false;
+        KeRaiseIrql(DISPATCH_LEVEL, &old_irql);
     }
     ~_emulate_dpc()
     {
-        _ebpf_platform_is_preemptible = true;
+        KeLowerIrql(old_irql);
 
         ebpf_restore_current_thread_affinity(old_thread_affinity_mask);
     }
 
   private:
     uintptr_t old_thread_affinity_mask;
+    KIRQL old_irql;
 
 } emulate_dpc_t;
 
@@ -69,6 +76,24 @@ typedef class _hook_helper
 {
   public:
     _hook_helper(ebpf_attach_type_t attach_type) : _attach_type(attach_type) {}
+
+    _Must_inspect_result_ ebpf_result_t
+    attach_link(
+        fd_t program_fd,
+        _In_reads_bytes_opt_(attach_parameters_size) void* attach_parameters,
+        size_t attach_parameters_size,
+        _Out_ bpf_link_ptr* unique_link)
+    {
+        bpf_link* link = nullptr;
+        ebpf_result_t result;
+
+        result = ebpf_program_attach_by_fd(program_fd, &_attach_type, attach_parameters, attach_parameters_size, &link);
+        if (result == EBPF_SUCCESS) {
+            unique_link->reset(link);
+        }
+
+        return result;
+    }
 
     _Must_inspect_result_ ebpf_result_t
     attach_link(
@@ -88,32 +113,36 @@ typedef class _single_instance_hook : public _hook_helper
 {
   public:
     _single_instance_hook(ebpf_program_type_t program_type, ebpf_attach_type_t attach_type)
-        : _hook_helper{attach_type}, provider(nullptr), client_binding_context(nullptr), client_data(nullptr),
+        : _hook_helper{attach_type}, client_binding_context(nullptr), client_data(nullptr),
           client_dispatch_table(nullptr), link_object(nullptr), client_registration_instance(nullptr),
-          nmr_binding_handle(nullptr)
+          nmr_binding_handle(nullptr), nmr_provider_handle(nullptr)
     {
         attach_provider_data.supported_program_type = program_type;
         attach_provider_data.bpf_attach_type = get_bpf_attach_type(&attach_type);
         this->attach_type = attach_type;
-
-        if (ebpf_provider_load(
-                &provider,
-                &ebpf_hook_extension_interface_id,
-                &attach_type,
-                nullptr,
-                &provider_data,
-                nullptr,
-                this,
-                (NPI_PROVIDER_ATTACH_CLIENT_FN*)provider_attach_client_callback,
-                (NPI_PROVIDER_DETACH_CLIENT_FN*)provider_detach_client_callback,
-                nullptr) != EBPF_SUCCESS) {
-            throw std::runtime_error("ebpf_provider_load failed");
-        }
+        module_id.Guid = attach_type;
+    }
+    ebpf_result_t
+    initialize()
+    {
+        NTSTATUS status = NmrRegisterProvider(&provider_characteristics, this, &nmr_provider_handle);
+        return (status == STATUS_SUCCESS) ? EBPF_SUCCESS : EBPF_FAILED;
     }
     ~_single_instance_hook()
     {
-        detach();
-        ebpf_provider_unload(provider);
+        // Best effort cleanup. Ignore errors.
+        if (link_object) {
+            (void)ebpf_link_detach(link_object);
+            (void)ebpf_link_close(link_object);
+        }
+        if (nmr_provider_handle != NULL) {
+            NTSTATUS status = NmrDeregisterProvider(nmr_provider_handle);
+            if (status == STATUS_PENDING) {
+                NmrWaitForProviderDeregisterComplete(nmr_provider_handle);
+            } else {
+                ebpf_assert(status == STATUS_SUCCESS);
+            }
+        }
     }
 
     uint32_t
@@ -170,6 +199,14 @@ typedef class _single_instance_hook : public _hook_helper
 #pragma warning(disable : 6001) // Using uninitialized memory '*link'.
         ebpf_link_close(link);
 #pragma warning(pop)
+    }
+
+    void
+    detach_and_close_link(_Inout_ bpf_link_ptr* unique_link)
+    {
+        bpf_link* link = unique_link->release();
+        detach_link(link);
+        close_link(link);
     }
 
     _Must_inspect_result_ ebpf_result_t
@@ -273,13 +310,33 @@ typedef class _single_instance_hook : public _hook_helper
 
     ebpf_extension_data_t provider_data = {
         EBPF_ATTACH_PROVIDER_DATA_VERSION, sizeof(attach_provider_data), &attach_provider_data};
-    ebpf_extension_provider_t* provider;
-    PNPI_REGISTRATION_INSTANCE client_registration_instance;
-    const void* client_binding_context;
-    const ebpf_extension_data_t* client_data;
-    const ebpf_extension_dispatch_table_t* client_dispatch_table;
-    HANDLE nmr_binding_handle;
-    bpf_link* link_object;
+    NPI_MODULEID module_id = {
+        sizeof(NPI_MODULEID),
+        MIT_GUID,
+    };
+    const NPI_PROVIDER_CHARACTERISTICS provider_characteristics = {
+        0,
+        sizeof(provider_characteristics),
+        (NPI_PROVIDER_ATTACH_CLIENT_FN*)provider_attach_client_callback,
+        (NPI_PROVIDER_DETACH_CLIENT_FN*)provider_detach_client_callback,
+        NULL,
+        {
+            EBPF_PROGRAM_INFORMATION_PROVIDER_DATA_VERSION,
+            sizeof(NPI_REGISTRATION_INSTANCE),
+            &EBPF_HOOK_EXTENSION_IID,
+            &module_id,
+            0,
+            &provider_data,
+        },
+    };
+    HANDLE nmr_provider_handle;
+
+    PNPI_REGISTRATION_INSTANCE client_registration_instance = nullptr;
+    const void* client_binding_context = nullptr;
+    const ebpf_extension_data_t* client_data = nullptr;
+    const ebpf_extension_dispatch_table_t* client_dispatch_table = nullptr;
+    HANDLE nmr_binding_handle = nullptr;
+    bpf_link* link_object = nullptr;
 } single_instance_hook_t;
 
 typedef class xdp_md_helper : public xdp_md_t
@@ -427,25 +484,170 @@ _xdp_context_destroy(
     free(context);
 }
 
+typedef class _test_global_helper
+{
+  public:
+    static uint64_t
+    _sample_get_pid_tgid()
+    {
+        return 9999;
+    }
+} test_global_helper_t;
+
+typedef class _test_sample_helper
+{
+  public:
+    static int64_t
+    _sample_ebpf_extension_helper_function1(_In_ const sample_program_context_t* context)
+    {
+        UNREFERENCED_PARAMETER(context);
+        return 0;
+    }
+
+    static int64_t
+    _sample_ebpf_extension_find(_In_ const void* buffer, uint32_t size, _In_ const void* find, uint32_t arg_size)
+    {
+        UNREFERENCED_PARAMETER(size);
+        UNREFERENCED_PARAMETER(arg_size);
+        return strstr((char*)buffer, (char*)find) - (char*)buffer;
+    }
+
+    static int64_t
+    _sample_ebpf_extension_replace(
+        _In_ const void* buffer, uint32_t size, int64_t position, _In_ const void* replace, uint32_t arg_size)
+    {
+        int64_t result = 0;
+        char* dest;
+        char* end = (char*)buffer + size - 1;
+        char* source = (char*)replace;
+        UNREFERENCED_PARAMETER(arg_size);
+
+        if (position < 0) {
+            result = -1;
+            goto Exit;
+        }
+
+        if (position >= size) {
+            result = -1;
+            goto Exit;
+        }
+
+        dest = (char*)buffer + position;
+        while (dest != end) {
+            if (*source == '\0') {
+                break;
+            }
+            *dest++ = *source++;
+        }
+
+    Exit:
+        return result;
+    }
+} test_sample_helper_t;
+
+// These are test sample context creation functions.
+static ebpf_result_t
+_sample_test_context_create(
+    _In_reads_bytes_opt_(data_size_in) const uint8_t* data_in,
+    _In_ size_t data_size_in,
+    _In_reads_bytes_opt_(context_size_in) const uint8_t* context_in,
+    _In_ size_t context_size_in,
+    _Outptr_ void** context)
+{
+    ebpf_result_t retval = EBPF_FAILED;
+    sample_program_context_t* sample_context = nullptr;
+    *context = nullptr;
+
+    // Data is not supported.
+    if (data_in || data_size_in != 0) {
+        retval = EBPF_INVALID_ARGUMENT;
+        goto Done;
+    }
+
+    // Context is required.
+    if (!context_in || context_size_in < sizeof(sample_program_context_t)) {
+        retval = EBPF_INVALID_ARGUMENT;
+        goto Done;
+    }
+
+    sample_context = reinterpret_cast<sample_program_context_t*>(malloc(sizeof(sample_program_context_t)));
+    if (!sample_context) {
+        goto Done;
+    }
+
+    memcpy(sample_context, context_in, sizeof(sample_program_context_t));
+
+    *context = sample_context;
+    sample_context = nullptr;
+    retval = EBPF_SUCCESS;
+
+Done:
+    free(sample_context);
+    sample_context = nullptr;
+    return retval;
+}
+
+static void
+_sample_test_context_destroy(
+    _In_opt_ void* context,
+    _Out_writes_bytes_to_(*data_size_out, *data_size_out) uint8_t* data_out,
+    _Inout_ size_t* data_size_out,
+    _Out_writes_bytes_to_(*context_size_out, *context_size_out) uint8_t* context_out,
+    _Inout_ size_t* context_size_out)
+{
+    UNREFERENCED_PARAMETER(data_out);
+    if (!context) {
+        return;
+    }
+
+    // Data is not supported.
+    *data_size_out = 0;
+
+    if (context_out && *context_size_out >= sizeof(sample_program_context_t)) {
+        memcpy(context_out, context, sizeof(sample_program_context_t));
+        *context_size_out = sizeof(sample_program_context_t);
+    } else {
+        *context_size_out = 0;
+    }
+
+    free(context);
+}
+
 #define TEST_NET_EBPF_EXTENSION_NPI_PROVIDER_VERSION 0
 
 // program info provider data for various program types.
 
-// XDP.
-static const void* _test_ebpf_xdp_helper_functions[] = {(void*)&test_xdp_helper_t::adjust_head};
+// Mock implementation of XDP.
+static const void* _mock_xdp_helper_functions[] = {(void*)&test_xdp_helper_t::adjust_head};
 
-static ebpf_helper_function_addresses_t _test_ebpf_xdp_helper_function_address_table = {
-    EBPF_COUNT_OF(_test_ebpf_xdp_helper_functions), (uint64_t*)_test_ebpf_xdp_helper_functions};
+static ebpf_helper_function_addresses_t _mock_xdp_helper_function_address_table = {
+    EBPF_COUNT_OF(_mock_xdp_helper_functions), (uint64_t*)_mock_xdp_helper_functions};
 
-static ebpf_program_data_t _ebpf_xdp_program_data = {
-    &_ebpf_xdp_program_info,
-    &_test_ebpf_xdp_helper_function_address_table,
+static const ebpf_program_info_t _mock_xdp_program_info = {
+    {"xdp", &_ebpf_xdp_test_context_descriptor, EBPF_PROGRAM_TYPE_XDP_GUID, BPF_PROG_TYPE_XDP},
+    EBPF_COUNT_OF(_xdp_test_ebpf_extension_helper_function_prototype),
+    _xdp_test_ebpf_extension_helper_function_prototype};
+
+static ebpf_program_data_t _mock_xdp_program_data = {
+    &_mock_xdp_program_info,
+    &_mock_xdp_helper_function_address_table,
     nullptr,
     _xdp_context_create,
     _xdp_context_destroy};
 
-static ebpf_extension_data_t _ebpf_xdp_program_info_provider_data = {
-    TEST_NET_EBPF_EXTENSION_NPI_PROVIDER_VERSION, sizeof(_ebpf_xdp_program_data), &_ebpf_xdp_program_data};
+static ebpf_extension_data_t _mock_xdp_program_info_provider_data = {
+    TEST_NET_EBPF_EXTENSION_NPI_PROVIDER_VERSION, sizeof(_mock_xdp_program_data), &_mock_xdp_program_data};
+
+// XDP_TEST.
+static ebpf_program_data_t _ebpf_xdp_test_program_data = {
+    &_ebpf_xdp_test_program_info,
+    &_mock_xdp_helper_function_address_table,
+    nullptr,
+    _xdp_context_create,
+    _xdp_context_destroy};
+
+static ebpf_extension_data_t _ebpf_xdp_test_program_info_provider_data = {
+    TEST_NET_EBPF_EXTENSION_NPI_PROVIDER_VERSION, sizeof(_ebpf_xdp_test_program_data), &_ebpf_xdp_test_program_data};
 
 // Bind.
 static ebpf_program_data_t _ebpf_bind_program_data = {&_ebpf_bind_program_info, NULL};
@@ -466,7 +668,25 @@ static ebpf_extension_data_t _ebpf_sock_ops_program_info_provider_data = {
     TEST_NET_EBPF_EXTENSION_NPI_PROVIDER_VERSION, sizeof(_ebpf_sock_ops_program_data), &_ebpf_sock_ops_program_data};
 
 // Sample extension.
-static ebpf_program_data_t _test_ebpf_sample_extension_program_data = {&_sample_ebpf_extension_program_info, NULL};
+static const void* _sample_ebpf_ext_helper_functions[] = {
+    test_sample_helper_t::_sample_ebpf_extension_helper_function1,
+    test_sample_helper_t::_sample_ebpf_extension_find,
+    test_sample_helper_t::_sample_ebpf_extension_replace};
+
+static ebpf_helper_function_addresses_t _sample_ebpf_ext_helper_function_address_table = {
+    EBPF_COUNT_OF(_sample_ebpf_ext_helper_functions), (uint64_t*)_sample_ebpf_ext_helper_functions};
+
+static const void* _test_global_helper_functions[] = {test_global_helper_t::_sample_get_pid_tgid};
+
+static ebpf_helper_function_addresses_t _test_global_helper_function_address_table = {
+    EBPF_COUNT_OF(_test_global_helper_functions), (uint64_t*)_test_global_helper_functions};
+
+static ebpf_program_data_t _test_ebpf_sample_extension_program_data = {
+    &_sample_ebpf_extension_program_info,
+    &_sample_ebpf_ext_helper_function_address_table,
+    &_test_global_helper_function_address_table,
+    _sample_test_context_create,
+    _sample_test_context_destroy};
 
 #define TEST_EBPF_SAMPLE_EXTENSION_NPI_PROVIDER_VERSION 0
 
@@ -478,13 +698,22 @@ static ebpf_extension_data_t _test_ebpf_sample_extension_program_info_provider_d
 typedef class _program_info_provider
 {
   public:
-    _program_info_provider(ebpf_program_type_t program_type, ebpf_extension_data_t* custom_provider_data = nullptr)
-        : program_type(program_type), provider(nullptr), provider_data(nullptr)
+    _program_info_provider() : provider_data(nullptr), nmr_provider_handle(INVALID_HANDLE_VALUE)
     {
+        memset(&_program_type, 0, sizeof(_program_type));
+    }
+
+    ebpf_result_t
+    initialize(ebpf_program_type_t program_type, ebpf_extension_data_t* custom_provider_data = nullptr)
+    {
+        this->_program_type = program_type;
+
         if (custom_provider_data != nullptr) {
             provider_data = custom_provider_data;
         } else if (program_type == EBPF_PROGRAM_TYPE_XDP) {
-            provider_data = &_ebpf_xdp_program_info_provider_data;
+            provider_data = &_mock_xdp_program_info_provider_data;
+        } else if (program_type == EBPF_PROGRAM_TYPE_XDP_TEST) {
+            provider_data = &_ebpf_xdp_test_program_info_provider_data;
         } else if (program_type == EBPF_PROGRAM_TYPE_BIND) {
             provider_data = &_ebpf_bind_program_info_provider_data;
         } else if (program_type == EBPF_PROGRAM_TYPE_CGROUP_SOCK_ADDR) {
@@ -494,26 +723,28 @@ typedef class _program_info_provider
         } else if (program_type == EBPF_PROGRAM_TYPE_SAMPLE) {
             provider_data = &_test_ebpf_sample_extension_program_info_provider_data;
         } else {
-            throw std::invalid_argument("Unsupported program type");
+            // Unsupported program type.
+            return EBPF_INVALID_ARGUMENT;
         }
         ebpf_program_data_t* program_data = (ebpf_program_data_t*)provider_data->data;
-        program_data->program_info->program_type_descriptor.program_type = program_type;
 
-        if (ebpf_provider_load(
-                &provider,
-                &ebpf_program_information_extension_interface_id,
-                &program_type,
-                nullptr,
-                provider_data,
-                nullptr,
-                this,
-                (NPI_PROVIDER_ATTACH_CLIENT_FN*)provider_attach_client_callback,
-                (NPI_PROVIDER_DETACH_CLIENT_FN*)provider_detach_client_callback,
-                nullptr) != EBPF_SUCCESS) {
-            throw std::runtime_error("ebpf_provider_load failed");
+        module_id.Guid = program_data->program_info->program_type_descriptor.program_type;
+        provider_characteristics.ProviderRegistrationInstance.NpiSpecificCharacteristics = provider_data;
+
+        NTSTATUS status = NmrRegisterProvider(&provider_characteristics, this, &nmr_provider_handle);
+        return (NT_SUCCESS(status)) ? EBPF_SUCCESS : EBPF_FAILED;
+    }
+    ~_program_info_provider()
+    {
+        if (nmr_provider_handle != INVALID_HANDLE_VALUE) {
+            NTSTATUS status = NmrDeregisterProvider(nmr_provider_handle);
+            if (status == STATUS_PENDING) {
+                NmrWaitForProviderDeregisterComplete(nmr_provider_handle);
+            } else {
+                ebpf_assert(status == STATUS_SUCCESS);
+            }
         }
     }
-    ~_program_info_provider() { ebpf_provider_unload(provider); }
 
   private:
     static NTSTATUS
@@ -548,10 +779,30 @@ typedef class _program_info_provider
         return EBPF_SUCCESS;
     };
 
-    ebpf_program_type_t program_type;
+    ebpf_program_type_t _program_type;
 
-    ebpf_extension_data_t* provider_data;
-    ebpf_extension_provider_t* provider;
+    const ebpf_extension_data_t* provider_data;
+    NPI_MODULEID module_id = {
+        sizeof(NPI_MODULEID),
+        MIT_GUID,
+    };
+
+    NPI_PROVIDER_CHARACTERISTICS provider_characteristics{
+        0,
+        sizeof(NPI_PROVIDER_CHARACTERISTICS),
+        (NPI_PROVIDER_ATTACH_CLIENT_FN*)provider_attach_client_callback,
+        (NPI_PROVIDER_DETACH_CLIENT_FN*)provider_detach_client_callback,
+        NULL,
+        {
+            EBPF_PROGRAM_INFORMATION_PROVIDER_DATA_VERSION,
+            sizeof(NPI_REGISTRATION_INSTANCE),
+            &EBPF_PROGRAM_INFO_EXTENSION_IID,
+            &module_id,
+            0,
+            NULL,
+        },
+    };
+    HANDLE nmr_provider_handle;
 } program_info_provider_t;
 
 #define ETHERNET_TYPE_IPV4 0x0800

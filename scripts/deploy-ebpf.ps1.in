@@ -17,27 +17,27 @@ $source_directory="."
     "EbpfCore.sys",
     "EbpfCore.pdb",
     "ebpfforwindows.wprp",
+    "ebpfforwindows_memory.wprp",
     "ebpfnetsh.dll",
     "ebpfnetsh.pdb",
-    "ebpfsvc.exe",
-    "ebpfsvc.pdb",
     "export_program_info.exe",
     "export_program_info.pdb",
-    "MSVCP140D.dll",
     "NetEbpfExt.sys",
     "NetEbpfExt.pdb",
     "net-ebpf-ext.guid",
-    "ucrtbased.dll",
-    "VCRUNTIME140_1D.dll",
-    "VCRUNTIME140D.dll")
+    "ucrtbased.dll")
+
+[System.Collections.ArrayList]$built_runtime_jit_files=@(
+    "ebpfsvc.exe",
+    "ebpfsvc.pdb")
 
 [System.Collections.ArrayList]$source_msi_files=@(
     "ebpf-for-windows-{version}.msi")
 
 [System.Collections.ArrayList]$source_script_files=@(
-    "scripts\common.psm1",
-    "scripts\install_ebpf.psm1",
-    "scripts\setup-ebpf.ps1")
+    "common.psm1",
+    "install_ebpf.psm1",
+    "setup-ebpf.ps1")
 
 # The following files are only needed for testing and debugging.
 [System.Collections.ArrayList]$built_test_files=@(
@@ -48,6 +48,10 @@ $source_directory="."
     "bindmonitor_ringbuf_um.dll",
     "bindmonitor_ringbuf_um.pdb",
     "bindmonitor_ringbuf.sys",
+    "bindmonitor_mt_tailcall.o",
+    "bindmonitor_mt_tailcall_um.dll",
+    "bindmonitor_mt_tailcall_um.pdb",
+    "bindmonitor_mt_tailcall.sys",
     "bindmonitor_tailcall.o",
     "bindmonitor_tailcall_um.dll",
     "bindmonitor_tailcall_um.pdb",
@@ -65,10 +69,32 @@ $source_directory="."
     "bpf.sys",
     "bpftool_tests.exe",
     "bpftool_tests.pdb",
+    "cgroup_count_connect4.o",
+    "cgroup_count_connect4_um.dll",
+    "cgroup_count_connect4_um.pdb",
+    "cgroup_count_connect4.sys",
+    "cgroup_count_connect6.o",
+    "cgroup_count_connect6_um.dll",
+    "cgroup_count_connect6_um.pdb",
+    "cgroup_count_connect6.sys",
+    "cgroup_mt_connect4.o",
+    "cgroup_mt_connect4_um.dll",
+    "cgroup_mt_connect4_um.pdb",
+    "cgroup_mt_connect4.sys",
+    "cgroup_mt_connect6.o",
+    "cgroup_mt_connect6_um.dll",
+    "cgroup_mt_connect6_um.pdb",
+    "cgroup_mt_connect6.sys",
     "cgroup_sock_addr.o",
     "cgroup_sock_addr_um.dll",
     "cgroup_sock_addr_um.pdb",
     "cgroup_sock_addr.sys",
+    "cgroup_sock_addr2.o",
+    "cgroup_sock_addr2_um.dll",
+    "cgroup_sock_addr2_um.pdb",
+    "cgroup_sock_addr2.sys",
+    "connect_redirect_tests.exe",
+    "connect_redirect_tests.pdb",
     "decap_permit_packet.o",
     "decap_permit_packet_um.dll",
     "decap_permit_packet_um.pdb",
@@ -82,24 +108,39 @@ $source_directory="."
     "droppacket_um.dll",
     "droppacket_um.pdb",
     "droppacket_unsafe.o",
+    "EbpfCore_usersim.dll",
+    "EbpfCore_usersim.pdb",
+    "ebpf_stress_tests_km.exe",
+    "ebpf_stress_tests_km.pdb",
+    "ebpf_stress_tests_um.exe",
+    "ebpf_stress_tests_um.pdb",
     "empty_um.dll",
+    "empty.sys",
     "encap_reflect_packet.o",
     "encap_reflect_packet_um.dll",
     "encap_reflect_packet_um.pdb",
     "encap_reflect_packet.sys",
     "invalid_maps1_um.dll",
+    "invalid_maps1.sys",
     "invalid_maps2_um.dll",
+    "invalid_maps2.sys",
     "invalid_maps3_um.dll",
+    "invalid_maps3.sys",
+    "invalid_helpers.sys",
     "invalid_helpers_um.dll",
     "map.o",
-    "map_in_map.o",
-    "map_in_map_um.dll",
-    "map_in_map_um.pdb",
-    "map_in_map.sys",
-    "map_in_map_v2.o",
-    "map_in_map_v2_um.dll",
-    "map_in_map_v2_um.pdb",
-    "map_in_map_v2.sys",
+    "map_in_map_btf.o",
+    "map_in_map_btf_um.dll",
+    "map_in_map_btf_um.pdb",
+    "map_in_map_btf.sys",
+    "map_in_map_legacy_id.o",
+    "map_in_map_legacy_id_um.dll",
+    "map_in_map_legacy_id_um.pdb",
+    "map_in_map_legacy_id.sys",
+    "map_in_map_legacy_idx.o",
+    "map_in_map_legacy_idx_um.dll",
+    "map_in_map_legacy_idx_um.pdb",
+    "map_in_map_legacy_idx.sys",
     "map_reuse.o",
     "map_reuse_2.o",
     "map_reuse_2_um.dll",
@@ -113,6 +154,8 @@ $source_directory="."
     "map.sys",
     "pidtgid.o",
     "pidtgid.sys",
+    "port_leak.exe",
+    "port_leak.pdb",
     "port_quota.exe",
     "port_quota.pdb",
     "printk.o",
@@ -147,6 +190,10 @@ $source_directory="."
     "tail_call_map_um.dll",
     "tail_call_map_um.pdb",
     "tail_call_map.sys",
+    "tail_call_max_exceed.o",
+    "tail_call_max_exceed_um.dll",
+    "tail_call_max_exceed_um.pdb",
+    "tail_call_max_exceed.sys",
     "tail_call_multiple.o",
     "tail_call_multiple_um.dll",
     "tail_call_multiple_um.pdb",
@@ -154,6 +201,8 @@ $source_directory="."
     "tail_call_um.dll",
     "tail_call_um.pdb",
     "tail_call.sys",
+    "tcp_udp_listener.exe",
+    "tcp_udp_listener.pdb",
     "test_sample_ebpf.o",
     "test_sample_ebpf_um.dll",
     "test_sample_ebpf_um.pdb",
@@ -164,14 +213,19 @@ $source_directory="."
     "test_utility_helpers.sys",
     "unit_tests.exe",
     "unit_tests.pdb",
+    "usersim.dll",
+    "usersim.pdb",
     "xdp_tests.exe",
     "xdp_tests.pdb")
 
 [System.Collections.ArrayList]$built_files= $built_runtime_files
+[System.Collections.ArrayList]$built_jit_files= $built_runtime_jit_files
 [System.Collections.ArrayList]$source_files= $source_script_files
 $destination_directory="C:\Temp"
 $error.clear()
 $vm="Windows 10 dev environment"
+$vc_redist_dir = Join-Path -Path $env:VCToolsRedistDir '\debug_nonredist\x64\Microsoft.VC143.DebugCRT\'
+$copy_redist=$false
 
 ##
 ## Process command-line options
@@ -194,6 +248,7 @@ OPTIONS:
     -m, --msi      Copies MSI instead of individual files
     -l, --local    Copies files to the local temp directory instead of into a VM
     -t, --test     Includes files needed only for testing and debugging
+    -j, --jittest  Includes files needed for JIT testing and debugging
     --vm           Specifies the VM name, which defaults to "Windows 10 dev environment"
 
 '@
@@ -209,7 +264,7 @@ OPTIONS:
             $vm=($arg -split "=")[1];
             break
         }
-    "^(?:-l|--list)(?:=(.+))?$"
+    "^(?:-l|--local)(?:=(.+))?$"
         {
             if ($matches[1]) {
                 $destination_directory = $matches[1]
@@ -227,6 +282,13 @@ OPTIONS:
     { @("-t", "--test") -contains $_ }
         {
             $built_files= $built_runtime_files + $built_test_files
+            $copy_redist=$true
+            break
+        }
+    { @("-j", "--jittest") -contains $_ }
+        {
+            $built_files= $built_runtime_files + $built_runtime_jit_files + $built_test_files
+            $copy_redist=$true
             break
         }
     default
@@ -250,6 +312,21 @@ if ($vm -eq $null) {
          New-Item -Type Directory $destination_full_directory -ErrorAction Stop | Write-Verbose
       }
       Copy-Item "$source_path" -Destination "$destination_path" -ErrorAction Stop
+   }
+
+   if ($copy_redist) {
+      Write-Host "Copying the VC++ Redist (Debug) files from `"$vc_redist_dir`" to `"$destination_directory`""
+      $files = Get-ChildItem -Path $vc_redist_dir -File
+      foreach ($file in $files) {
+        $source_path = $file.FullName
+        $destination_path = Join-Path -Path $destination_directory -ChildPath $file.Name
+        $destination_full_directory = Split-Path $destination_path -Parent
+        Write-Host " $source_path -> $destination_path"
+        if (!(Test-Path $destination_full_directory)) {
+          New-Item -Type Directory $destination_full_directory -ErrorAction Stop | Write-Verbose
+        }
+        Copy-Item -Path $source_path -Destination $destination_path -ErrorAction Stop
+      }
    }
 
    Write-Host "Copying files from `"$source_directory`" to `"$destination_directory`""
@@ -300,4 +377,18 @@ foreach ( $file in $source_files ) {
    if (! $?) {
        exit 1
    }
+}
+
+if ($copy_redist) {
+    Write-Host "Copying the VC++ Redist (Debug) files from `"$vc_redist_dir`" to `"$destination_directory`" in VM `"$vm`"..."
+    $files = Get-ChildItem -Path $vc_redist_dir -File
+    foreach ($file in $files) {
+        $source_path = $file.FullName
+        $destination_path = Join-Path -Path $destination_directory -ChildPath $file.Name
+        Write-Host " $source_path -> $destination_path"
+        Copy-VMFile "$vm" -SourcePath "$source_path" -DestinationPath "$destination_path" -CreateFullPath -FileSource Host -Force
+        if (! $?) {
+            exit 1
+        }
+    }
 }

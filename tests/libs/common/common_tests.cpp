@@ -33,25 +33,29 @@ ebpf_test_pinned_map_enum()
     fd_t map_fd = bpf_map_create(BPF_MAP_TYPE_ARRAY, nullptr, sizeof(uint32_t), sizeof(uint64_t), 1024, nullptr);
     REQUIRE(map_fd >= 0);
 
-    if (map_fd < 0)
+    if (map_fd < 0) {
         goto Exit;
+    }
 
     for (int i = 0; i < pinned_map_count; i++) {
         std::string pin_path = pin_path_prefix + std::to_string(i);
         error = bpf_obj_pin(map_fd, pin_path.c_str());
         REQUIRE(error == 0);
-        if (error != 0)
+        if (error != 0) {
             goto Exit;
+        }
     }
 
     REQUIRE((result = ebpf_api_get_pinned_map_info(&map_count, &map_info)) == EBPF_SUCCESS);
-    if (result != EBPF_SUCCESS)
+    if (result != EBPF_SUCCESS) {
         goto Exit;
+    }
 
     REQUIRE(map_count == pinned_map_count);
     REQUIRE(map_info != nullptr);
-    if (map_info == nullptr)
+    if (map_info == nullptr) {
         goto Exit;
+    }
 
     _Analysis_assume_(pinned_map_count == map_count);
     for (int i = 0; i < pinned_map_count; i++) {
@@ -85,8 +89,9 @@ verify_utility_helper_results(_In_ const bpf_object* object, bool helper_overrid
 {
     fd_t utility_map_fd = bpf_object__find_map_fd_by_name(object, "utility_map");
     ebpf_utility_helpers_data_t test_data[UTILITY_MAP_SIZE];
-    for (uint32_t key = 0; key < UTILITY_MAP_SIZE; key++)
+    for (uint32_t key = 0; key < UTILITY_MAP_SIZE; key++) {
         REQUIRE(bpf_map_lookup_elem(utility_map_fd, &key, (void*)&test_data[key]) == EBPF_SUCCESS);
+    }
 
     REQUIRE(test_data[0].random != test_data[1].random);
     REQUIRE(test_data[0].timestamp < test_data[1].timestamp);
@@ -109,8 +114,9 @@ ring_buffer_test_event_context_t::_ring_buffer_test_event_context()
 {}
 ring_buffer_test_event_context_t::~_ring_buffer_test_event_context()
 {
-    if (ring_buffer != nullptr)
+    if (ring_buffer != nullptr) {
         ring_buffer__free(ring_buffer);
+    }
 }
 void
 ring_buffer_test_event_context_t::unsubscribe()
@@ -133,21 +139,45 @@ ring_buffer_test_event_handler(_Inout_ void* ctx, _In_opt_ const void* data, siz
         return 0;
     }
 
-    if (event_context->canceled)
+    if (event_context->canceled) {
         // Ignore the callback as the subscription is canceled.
         // Return error so that no further callback is made.
         return -1;
+    }
 
-    if (event_context->matched_entry_count == event_context->test_event_count)
+    if (event_context->matched_entry_count == event_context->test_event_count) {
         // Required number of event notifications already received.
         return 0;
+    }
 
     std::vector<char> event_record(reinterpret_cast<const char*>(data), reinterpret_cast<const char*>(data) + size);
-    // Check if indicated event record matches an entry in the context records.
+
+    // Check if indicated event record matches an entry in the context records
+    // that has not been matched yet.
     auto records = event_context->records;
-    auto it = std::find(records->begin(), records->end(), event_record);
-    if (it != records->end())
+    auto it = records->begin();
+    for (;;) {
+        // Find the next entry in the records vector.
+        it = std::find(it, records->end(), event_record);
+        if (it == records->end()) {
+            // No more entries in the records vector.
+            break;
+        }
+
+        // Check if the entry has already been matched.
+        auto index = std::distance(records->begin(), it);
+        if (event_context->event_received.find(index) != event_context->event_received.end()) {
+            it++;
+            // Entry already matched.
+            continue;
+        }
+
+        // Mark the entry as matched.
+        event_context->event_received.insert(index);
         event_context->matched_entry_count++;
+        break;
+    }
+
     if (event_context->matched_entry_count == event_context->test_event_count) {
         // If all the entries in the app ID list was found, fulfill the promise.
         event_context->ring_buffer_event_promise.set_value();
@@ -187,6 +217,8 @@ ring_buffer_api_test_helper(
 
     // Wait for event handler getting notifications for all RING_BUFFER_TEST_EVENT_COUNT events.
     REQUIRE(ring_buffer_event_callback.wait_for(1s) == std::future_status::ready);
+
+    REQUIRE(context->matched_entry_count == RING_BUFFER_TEST_EVENT_COUNT);
 
     // Mark the event context as canceled, such that the event callback stops processing events.
     context->canceled = true;

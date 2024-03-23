@@ -8,7 +8,8 @@
  */
 
 #include "ebpf_platform.h"
-#include "ebpf_store_helper.h"
+#include "ebpf_version.h"
+#include "git_commit_id.h"
 #include "net_ebpf_ext.h"
 
 #include <ntddk.h>
@@ -18,7 +19,10 @@
 #include <fwpsk.h>
 #pragma warning(pop)
 #include <netiodef.h>
+#pragma warning(push)
+#pragma warning(disable : 4062) // enumerator 'identifier' in switch of enum 'enumeration' is not handled
 #include <wdf.h>
+#pragma warning(pop)
 
 #define NET_EBPF_EXT_DEVICE_NAME L"\\Device\\NetEbpfExt"
 
@@ -26,6 +30,8 @@
 static WDFDEVICE _net_ebpf_ext_device = NULL;
 static BOOLEAN _net_ebpf_ext_driver_unloading_flag = FALSE;
 DEVICE_OBJECT* _net_ebpf_ext_driver_device_object;
+
+const char net_ebpf_ext_version[] = EBPF_VERSION " " GIT_COMMIT_ID;
 
 //
 // Pre-Declarations
@@ -45,8 +51,9 @@ _net_ebpf_ext_driver_uninitialize_objects()
 
     net_ebpf_ext_trace_terminate();
 
-    if (_net_ebpf_ext_device != NULL)
+    if (_net_ebpf_ext_device != NULL) {
         WdfObjectDelete(_net_ebpf_ext_device);
+    }
 }
 
 static _Function_class_(EVT_WDF_DRIVER_UNLOAD) _IRQL_requires_same_
@@ -75,8 +82,8 @@ _net_ebpf_ext_driver_initialize_objects(_Inout_ DRIVER_OBJECT* driver_object, _I
     driver_configuration.EvtDriverUnload = _net_ebpf_ext_driver_unload;
 
     status = WdfDriverCreate(driver_object, registry_path, WDF_NO_OBJECT_ATTRIBUTES, &driver_configuration, &driver);
-
     if (!NT_SUCCESS(status)) {
+        NET_EBPF_EXT_LOG_NTSTATUS_API_FAILURE(NET_EBPF_EXT_TRACELOG_KEYWORD_BASE, "WdfDriverCreate", status);
         goto Exit;
     }
 
@@ -86,6 +93,8 @@ _net_ebpf_ext_driver_initialize_objects(_Inout_ DRIVER_OBJECT* driver_object, _I
     );
     if (!device_initialize) {
         status = STATUS_INSUFFICIENT_RESOURCES;
+        NET_EBPF_EXT_LOG_NTSTATUS_API_FAILURE(
+            NET_EBPF_EXT_TRACELOG_KEYWORD_BASE, "WdfControlDeviceInitAllocate", status);
         goto Exit;
     }
 
@@ -98,14 +107,14 @@ _net_ebpf_ext_driver_initialize_objects(_Inout_ DRIVER_OBJECT* driver_object, _I
     RtlInitUnicodeString(&ebpf_device_name, NET_EBPF_EXT_DEVICE_NAME);
     status = WdfDeviceInitAssignName(device_initialize, &ebpf_device_name);
     if (!NT_SUCCESS(status)) {
+        NET_EBPF_EXT_LOG_NTSTATUS_API_FAILURE(NET_EBPF_EXT_TRACELOG_KEYWORD_BASE, "WdfDeviceInitAssignName", status);
         goto Exit;
     }
 
     status = WdfDeviceCreate(&device_initialize, WDF_NO_OBJECT_ATTRIBUTES, &_net_ebpf_ext_device);
-
     if (!NT_SUCCESS(status)) {
-        // do not free if any other call
-        // after WdfDeviceCreate fails.
+        NET_EBPF_EXT_LOG_NTSTATUS_API_FAILURE(NET_EBPF_EXT_TRACELOG_KEYWORD_BASE, "WdfDeviceCreate", status);
+        // Do not free if any other call after WdfDeviceCreate fails.
         WdfDeviceInitFree(device_initialize);
         device_initialize = NULL;
         goto Exit;
@@ -114,15 +123,17 @@ _net_ebpf_ext_driver_initialize_objects(_Inout_ DRIVER_OBJECT* driver_object, _I
     _net_ebpf_ext_driver_device_object = WdfDeviceWdmGetDeviceObject(_net_ebpf_ext_device);
 
     status = net_ebpf_ext_initialize_ndis_handles((const DRIVER_OBJECT*)driver_object);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         goto Exit;
+    }
 
     // TODO: https://github.com/microsoft/ebpf-for-windows/issues/521
     (void)net_ebpf_extension_initialize_wfp_components(_net_ebpf_ext_driver_device_object);
 
     status = net_ebpf_ext_register_providers();
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status)) {
         goto Exit;
+    }
 
     WdfControlFinishInitializing(_net_ebpf_ext_device);
 
@@ -148,13 +159,15 @@ DriverEntry(_In_ DRIVER_OBJECT* driver_object, _In_ UNICODE_STRING* registry_pat
     ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
     status = _net_ebpf_ext_driver_initialize_objects(driver_object, registry_path);
     if (!NT_SUCCESS(status)) {
-        NET_EBPF_EXT_LOG_MESSAGE_NTSTATUS(
-            NET_EBPF_EXT_TRACELOG_LEVEL_CRITICAL,
-            NET_EBPF_EXT_TRACELOG_KEYWORD_BASE,
-            (char*)"_net_ebpf_ext_driver_initialize_objects() failed",
-            status);
+
+        // Specific errors already logged by the (dedicated) callee. No additional traces required here.
         goto Exit;
     }
+
+    // Log the version of the driver.
+    // This is useful for debugging purposes and to ensure that the version string is present in the binary.
+    NET_EBPF_EXT_LOG_MESSAGE(
+        NET_EBPF_EXT_TRACELOG_LEVEL_VERBOSE, NET_EBPF_EXT_TRACELOG_KEYWORD_BASE, net_ebpf_ext_version);
 
 Exit:
     if (!NT_SUCCESS(status)) {
